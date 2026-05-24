@@ -3,26 +3,38 @@ using Unity.Netcode;
 
 public class PlayerMovement : NetworkBehaviour
 {
-    
-    public float speed = 5f;
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    //Initial variable to speed
+    [SerializeField] private float speed = 5f;
     void Start()
     {
+        //Color start player Owner sesion
         if (IsOwner)
         {
             GetComponent<Renderer>().material.color = Color.red;
         }
     }
 
-    // Update is called once per frame
+    
     void Update()
     {
         if (!IsOwner) return;
 
-        float horizontal = Input.GetAxisRaw("Horizontal");
-        float vertical = Input.GetAxisRaw("Vertical");
+        float x = 0f;
+        float z = 0f;
 
-        Vector3 direction = new Vector3(horizontal, 0f, vertical).normalized;
-        transform.Translate(direction * speed * Time.deltaTime);
+        // To controller WASD keys
+        if (Input.GetKey(KeyCode.A)) x -= 1f;
+        if (Input.GetKey(KeyCode.D)) x += 1f;
+        if (Input.GetKey(KeyCode.W)) z += 1f;
+        if (Input.GetKey(KeyCode.S)) z -= 1f;
+
+        // To controller Arrow keys
+        if (Input.GetKey(KeyCode.LeftArrow))  x -= 1f;
+        if (Input.GetKey(KeyCode.RightArrow)) x += 1f;
+        if (Input.GetKey(KeyCode.UpArrow))    z += 1f;
+        if (Input.GetKey(KeyCode.DownArrow))  z -= 1f;
+
+        Vector3 move = new Vector3(x, 0f, z).normalized;
+        transform.position += move * speed * Time.deltaTime;
     }
 }
