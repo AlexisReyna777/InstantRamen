@@ -1009,7 +1009,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   ShowTopMostFoldoutHeaderGroup: 1
-  tiempoInicialPartida: 60
+  tiempoInicialPartida: 180
   puntajeHost:
     UpdateTraits:
       MinSecondsBetweenUpdates: 0
