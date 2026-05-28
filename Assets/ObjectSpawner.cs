@@ -11,8 +11,8 @@ public class ObjectSpawner : NetworkBehaviour
     [SerializeField] private int maxObjetosEnMapa = 10; // Límite para no saturar el juego de cubos
 
     [Header("Límites del Mapa (Área de Spawn)")]
-    [SerializeField] private float rangoX = 15f;
-    [SerializeField] private float rangoZ = 15f;
+    [SerializeField] private float rangoX = 8.5f;
+    [SerializeField] private float rangoZ = 8.5f;
     [SerializeField] private float alturaY = 0.5f; // Altura fija para que no aparezcan flotando o enterrados
 
     private List<GameObject> objetosActivos = new List<GameObject>();
