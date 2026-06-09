@@ -10,16 +10,19 @@ public class GameManager : NetworkBehaviour
 
     [Header("Configuración del Juego")]
     [SerializeField] private float tiempoInicialPartida = 180f;
+    [SerializeField] private int jugadoresNecesariosParaEmpezar = 2; // ¡NUEVO!
 
     [Header("Puntos de Spawn")]
-    // Aquí arrastraremos los Transforms de los objetos vacíos que creamos en el paso 1
     [SerializeField] private List<Transform> puntosDeSpawn;
 
-    // Variables de Red, manejo de puntos
+    // Variables de Red
     public NetworkVariable<int> puntajeHost = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<int> puntajeCliente = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<float> tiempoRestante = new NetworkVariable<float>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<bool> juegoTerminado = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    
+    // ¡NUEVO!: Variable de red para avisarle a la UI si la partida realmente empezó
+    public NetworkVariable<bool> partidaIniciada = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private void Awake()
     {
@@ -31,58 +34,95 @@ public class GameManager : NetworkBehaviour
     {
         if (IsServer)
         {
+            // Al nacer el GameManager, seteamos todo en "espera"
             tiempoRestante.Value = tiempoInicialPartida;
             juegoTerminado.Value = false;
+            partidaIniciada.Value = false; // El juego NO empieza todavía
             puntajeHost.Value = 0;
             puntajeCliente.Value = 0;
+
+            // Nos suscribimos a los eventos de Netcode para saber cuando entra o sale un player
+            NetworkManager.Singleton.OnClientConnectedCallback += AlConectarseUnCliente;
+            NetworkManager.Singleton.OnClientDisconnectCallback += AlDesconectarseUnCliente;
             NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += AlCompletarCargaDeEscena;
+
+            // Chequeo rápido por si el Host entró antes de que este script se suscribiera
+            VerificarInicioDePartida();
         }
     }
+
     public override void OnNetworkDespawn()
     {
         if (IsServer && NetworkManager.Singleton != null)
         {
+            NetworkManager.Singleton.OnClientConnectedCallback -= AlConectarseUnCliente;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= AlDesconectarseUnCliente;
             NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= AlCompletarCargaDeEscena;
         }
     }
 
-    private void AlCompletarCargaDeEscena(string sceneName, UnityEngine.SceneManagement.LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
-{
-    if (!IsServer) return;
+    private void AlConectarseUnCliente(ulong clientId)
+    {
+        if (!IsServer) return;
+        Debug.Log($"[SERVIDOR] Se ha conectado el cliente ID: {clientId}");
+        VerificarInicioDePartida();
+    }
 
-    // Ejecutamos la teletransportación con un mini retraso seguro de red
-    StartCoroutine(TeletransportarJugadoresRetrasado(clientsCompleted));
-}
+    private void AlDesconectarseUnCliente(ulong clientId)
+    {
+        if (!IsServer) return;
+        Debug.Log($"[SERVIDOR] Se ha desconectado el cliente ID: {clientId}");
+        
+        // Opcional: Si el cliente se va en medio de la partida, podrías pausar o terminar el juego
+        if (NetworkManager.Singleton.ConnectedClientsIds.Count < jugadoresNecesariosParaEmpezar)
+        {
+            partidaIniciada.Value = false;
+            Debug.Log("[SERVIDOR] Jugadores insuficientes. Partida pausada/detenida.");
+        }
+    }
+
+    private void VerificarInicioDePartida()
+    {
+        // Contamos cuántos dispositivos están conectados al NetworkManager actualmente
+        int jugadoresActuales = NetworkManager.Singleton.ConnectedClientsIds.Count;
+        Debug.Log($"[SERVIDOR] Jugadores conectados actualmente: {jugadoresActuales}/{jugadoresNecesariosParaEmpezar}");
+
+        if (jugadoresActuales >= jugadoresNecesariosParaEmpezar && !partidaIniciada.Value)
+        {
+            Debug.Log("[SERVIDOR] ¡Quórum alcanzado! La partida comienza AHORA.");
+            partidaIniciada.Value = true;
+        }
+    }
+
+    private void AlCompletarCargaDeEscena(string sceneName, UnityEngine.SceneManagement.LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
+    {
+        if (!IsServer) return;
+        StartCoroutine(TeletransportarJugadoresRetrasado(clientsCompleted));
+    }
 
     private System.Collections.IEnumerator TeletransportarJugadoresRetrasado(List<ulong> clientes)
     {
-    yield return new WaitForEndOfFrame();
-
-    Debug.Log("[SERVIDOR] Teletransportando jugadores de forma segura...");
-    int index = 0;
-
+        yield return new WaitForEndOfFrame();
+        int index = 0;
         foreach (ulong clientId in clientes)
         {
             if (NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var networkClient))
             {
                 NetworkObject playerObject = networkClient.PlayerObject;
-
                 if (playerObject != null && puntosDeSpawn.Count > index)
                 {
                     Vector3 posicionSpawn = puntosDeSpawn[index].position;
                     Quaternion rotacionSpawn = puntosDeSpawn[index].rotation;
 
-                
-                    playerObject.transform.position = posicionSpawn;
-                    playerObject.transform.rotation = rotacionSpawn;
-
-                    if (playerObject.TryGetComponent<Unity.Netcode.Components.NetworkTransform>(out Unity.Netcode.Components.NetworkTransform netTransform))
+                    if (playerObject.TryGetComponent<Unity.Netcode.Components.NetworkTransform>(out var netTransform))
                     {
-                    
-                        playerObject.transform.position = posicionSpawn; 
+                        netTransform.Teleport(posicionSpawn, rotacionSpawn, playerObject.transform.localScale);
                     }
-
-                    Debug.Log($"[SERVIDOR] Player ID {clientId} enviado con éxito al Spawn {index}");
+                    else
+                    {
+                        playerObject.transform.position = posicionSpawn;
+                        playerObject.transform.rotation = rotacionSpawn;
+                    }
                     index++;
                 }
             }
@@ -92,7 +132,9 @@ public class GameManager : NetworkBehaviour
     private void Update()
     {
         if (!IsServer) return; 
-        if (juegoTerminado.Value) return;
+        
+        // ¡EL ESCUDO DEL UPDATE!: Si la partida NO inició, o ya terminó, congelamos el tiempo
+        if (!partidaIniciada.Value || juegoTerminado.Value) return;
 
         if (tiempoRestante.Value > 0)
         {
@@ -105,12 +147,12 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    
     public void SumarPuntosServer(ulong clientId, int puntos)
     {
         if (!IsServer) return;
+        // Evitamos sumar puntos si alguien hace trampa antes de que se conecten todos
+        if (!partidaIniciada.Value || juegoTerminado.Value) return;
 
-      
         if (clientId == 0) 
         {
             puntajeHost.Value += puntos;
@@ -124,38 +166,36 @@ public class GameManager : NetworkBehaviour
     private void TerminarPartida()
     {
         juegoTerminado.Value = true;
+        partidaIniciada.Value = false; // Apagamos el flag de juego activo
         Debug.Log("[SERVIDOR] ¡Tiempo terminado! Fin de la partida.");
-    
     }
 
     public void ReiniciarPartidaServer()
-{
-    if (!IsServer) return;
-
-    Debug.Log("[SERVIDOR] Iniciando limpieza de red previa al reinicio...");
-
-    
-    ObjetoRecolectable[] todosLosCubos = FindObjectsByType<ObjetoRecolectable>(FindObjectsSortMode.None);
-    foreach (ObjetoRecolectable cubo in todosLosCubos)
     {
-        if (cubo.TryGetComponent<NetworkObject>(out NetworkObject netObj))
+        if (!IsServer) return;
+
+        Debug.Log("[SERVIDOR] Iniciando limpieza de red previa al reinicio...");
+
+        ObjetoRecolectable[] todosLosCubos = FindObjectsByType<ObjetoRecolectable>(FindObjectsSortMode.None);
+        foreach (ObjetoRecolectable cubo in todosLosCubos)
         {
-            if (netObj.IsSpawned)
+            if (cubo.TryGetComponent<NetworkObject>(out NetworkObject netObj))
             {
-                netObj.Despawn();
-                Destroy(cubo.gameObject);
+                if (netObj.IsSpawned)
+                {
+                    netObj.Despawn();
+                    Destroy(cubo.gameObject);
+                }
             }
         }
+
+        puntajeHost.Value = 0;
+        puntajeCliente.Value = 0;
+        tiempoRestante.Value = tiempoInicialPartida;
+        juegoTerminado.Value = false;
+        partidaIniciada.Value = false; // Volvemos a esperar a que carguen de nuevo
+
+        Debug.Log("[SERVIDOR] Red limpia. Recargando escena de juego...");
+        NetworkManager.Singleton.SceneManager.LoadScene("MainScene", UnityEngine.SceneManagement.LoadSceneMode.Single);
     }
-
-    
-    puntajeHost.Value = 0;
-    puntajeCliente.Value = 0;
-    tiempoRestante.Value = tiempoInicialPartida;
-    juegoTerminado.Value = false;
-
-    Debug.Log("[SERVIDOR] Red limpia. Recargando escena de juego...");
-
-    NetworkManager.Singleton.SceneManager.LoadScene("MainScene", UnityEngine.SceneManagement.LoadSceneMode.Single);
-}
 }
