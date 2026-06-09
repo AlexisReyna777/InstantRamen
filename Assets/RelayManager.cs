@@ -7,57 +7,113 @@ using Unity.Services.Relay;
 using Unity.Services.Relay.Models;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
-using Unity.Networking.Transport; 
+using System; 
+
 public class RelayManager : MonoBehaviour
 {
-   [SerializeField] Button hostButton;
-   [SerializeField] Button joinButton;
-   [SerializeField] TMP_InputField joinInput;
-   [SerializeField] TextMeshProUGUI codeText;
+    [SerializeField] private Button hostButton;
+    [SerializeField] private Button joinButton;
+    [SerializeField] private TMP_InputField joinInput;
+    [SerializeField] private TextMeshProUGUI codeText;
 
-   async void Start()
+    async void Start()
     {
-        // Inicializa los servicios de Unity
-        await UnityServices.InitializeAsync();
+        
+        if (UnityServices.State == ServicesInitializationState.Uninitialized)
+        {
+            await UnityServices.InitializeAsync();
+        }
 
-        // Inicia sesión de forma anónima en los servicios de Unity
-        await AuthenticationService.Instance.SignInAnonymouslyAsync();
+        
+        if (!AuthenticationService.Instance.IsSignedIn)
+        {
+            Debug.Log("Jugador no logueado. Iniciando sesión de forma anónima...");
+            await AuthenticationService.Instance.SignInAnonymouslyAsync();
+        }
+        else
+        {
+            Debug.Log("El jugador ya estaba autenticado de la escena anterior. Saltando login.");
+        }
 
-        hostButton.onClick.AddListener(CreateRelay);
-        joinButton.onClick.AddListener(() => JoinRelay(joinInput.text));
+        
+        if (hostButton != null)
+        {
+            hostButton.onClick.RemoveAllListeners(); 
+            hostButton.onClick.AddListener(OnHostButtonClicked);
+        }
+
+        if (joinButton != null)
+        {
+            joinButton.onClick.RemoveAllListeners();
+            joinButton.onClick.AddListener(OnJoinButtonClicked);
+        }
+    }
+
+    // Funciones intermediarias obligatorias para botones tradicionales cuando usas métodos "async"
+    private void OnHostButtonClicked()
+    {
+        CreateRelay();
+    }
+
+    private void OnJoinButtonClicked()
+    {
+        if (joinInput != null)
+        {
+            JoinRelay(joinInput.text);
+        }
     }
    
-   async void CreateRelay()
+    async void CreateRelay()
     {
-        // Crea la asignación en los servidores de Unity para 3 jugadores max (más el host = 4)
-        Allocation allocation = await RelayService.Instance.CreateAllocationAsync(3);
-        
-        // Genera el código
-        string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
-        
-        codeText.text = "Code: " + joinCode;
+        try
+        {
+            Debug.Log("[RELAY] Intentando crear asignación en la nube...");
+            // Asignación para 3 invitados max
+            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(3);
+            
+            // Genera el código
+            string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+            
+            if (codeText != null) codeText.text = "Code: " + joinCode;
+            Debug.Log($"[RELAY] Código generado con éxito: {joinCode}");
 
-        // Configura los datos del servidor Relay usando "dtls" (encriptado seguro)
-        var relayServerData = AllocationUtils.ToRelayServerData(allocation, "dtls");
+            // Configura el transporte de red de Unity (UTP)
+            var relayServerData = AllocationUtils.ToRelayServerData(allocation, "dtls");
+            NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
 
-        NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
-
-        NetworkManager.Singleton.StartHost();
+            // Enciende el Host e instancia al Player automáticamente
+            NetworkManager.Singleton.StartHost();
+            Debug.Log("[NETCODE] ¡Host iniciado con éxito!");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Error al crear el Relay: {e.Message}");
+        }
     }
 
     async void JoinRelay(string joinCode)
     {
-        // Si el campo de texto está vacío, evitamos intentar conectar
-        if (string.IsNullOrEmpty(joinCode)) return;
+        if (string.IsNullOrEmpty(joinCode))
+        {
+            Debug.LogWarning("El código de unión está vacío.");
+            return;
+        }
 
-        // Se une a la partida usando el código introducido en el InputField
-        var joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
-        
-        // Configura los datos del servidor Relay para el cliente
-        var relayServerData = AllocationUtils.ToRelayServerData(joinAllocation, "dtls");
-        
-        NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
+        try
+        {
+            Debug.Log($"[RELAY] Intentando unirse con el código: {joinCode}");
+            var joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
+            
+            var relayServerData = AllocationUtils.ToRelayServerData(joinAllocation, "dtls");
+            NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
 
-        NetworkManager.Singleton.StartClient();
+            // Enciende el cliente
+            NetworkManager.Singleton.StartClient();
+            Debug.Log("[NETCODE] ¡Cliente iniciado y conectando al Host!");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"Error al unirse al Relay: {e.Message}");
+        }
     }
 }
