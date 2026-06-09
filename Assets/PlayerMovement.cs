@@ -4,20 +4,28 @@ using System.Collections;
 
 public class PlayerMovement : NetworkBehaviour
 {
-    [SerializeField] private float speed = 20f;
+    [Header("Configuración de Movimiento")]
+    [SerializeField] private float speed = 7f;
+    
+    private Animator miAnimator;
 
-    void Start()
+    public override void OnNetworkSpawn()
     {
+        // Buscamos el Animator en los objetos hijos (tu modelo de Blender)
+        miAnimator = GetComponentInChildren<Animator>();
 
+        // Si somos el dueño de este personaje, cambiamos el color de su malla visual
         if (IsOwner)
         {
-            
-            if (TryGetComponent<Renderer>(out Renderer render))
+            Renderer rendererHijo = GetComponentInChildren<Renderer>();
+            if (rendererHijo != null)
             {
-                render.material.color = Color.red;
+                rendererHijo.material.color = Color.red;
             }
-
-            StartCoroutine(ForzarSpawnCliente());
+            else
+            {
+                Debug.LogWarning("No se encontró un Renderer en los hijos del Player para cambiar el color.");
+            }
         }
     }
 
@@ -25,51 +33,56 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (!IsOwner) return;
 
-        float x = 0f;
-        float z = 0f;
+        if (GameManager.Instance != null && !GameManager.Instance.partidaIniciada.Value) return;
 
-        // Control con WASD
-        if (Input.GetKey(KeyCode.A)) x -= 1f;
-        if (Input.GetKey(KeyCode.D)) x += 1f;
-        if (Input.GetKey(KeyCode.W)) z += 1f;
-        if (Input.GetKey(KeyCode.S)) z -= 1f;
+        // 1. Leemos los ejes de entrada nativos de Unity (WASD / Flechas)
+        float temporalX = Input.GetAxisRaw("Horizontal");
+        float temporalZ = Input.GetAxisRaw("Vertical");
 
-        // Control con Flechas
-        if (Input.GetKey(KeyCode.LeftArrow))  x -= 1f;
-        if (Input.GetKey(KeyCode.RightArrow)) x += 1f;
-        if (Input.GetKey(KeyCode.UpArrow))    z += 1f;
-        if (Input.GetKey(KeyCode.DownArrow))  z -= 1f;
+        float inputX = 0f;
+        float inputZ = 0f;
 
-        
-        Vector3 move = new Vector3(x, 0f, z);
+        // 2. FILTRO DE 4 DIRECCIONES: Forzamos el movimiento en cruz (elimina las diagonales)
+        // Comparamos qué eje tiene más presión en el teclado usando valores absolutos.
+        if (Mathf.Abs(temporalX) >= Mathf.Abs(temporalZ))
+        {
+            // Si domina el movimiento horizontal (o son iguales), anulamos el avance vertical
+            inputX = temporalX;
+            inputZ = 0f;
+        }
+        else
+        {
+            // Si domina el movimiento vertical, anulamos el avance horizontal
+            inputX = 0f;
+            inputZ = temporalZ;
+        }
 
-        
+        // 3. Creamos el vector de movimiento con los ejes ya filtrados
+        Vector3 move = new Vector3(inputX, 0f, inputZ);
+
+        // 4. Mandamos la velocidad limpia al Animator (0 si está quieto, 1 si se mueve)
+        float velocidadActual = move.magnitude;
+        if (miAnimator != null)
+        {
+            miAnimator.SetFloat("Velocidad", velocidadActual);
+        }  
+
+        // 5. Si hay movimiento, aplicamos la rotación exacta y el desplazamiento físico
         if (move.magnitude > 0.1f)
         {
-            move = move.normalized;
+            // Como el filtro ya anuló un eje, el vector ya mide 1 de forma perfecta (no hace falta normalized)
+            
+            // Calculamos la rotación fija (0°, 90°, 180° o 270°)
+            Quaternion rotacionObjetivo = Quaternion.LookRotation(move);
+
+            // Aplicamos el cambio de frente inmediato sin bucles de indecisión
+            if (Quaternion.Angle(transform.rotation, rotacionObjetivo) > 0.1f)
+            {
+                transform.rotation = rotacionObjetivo;
+            }
+
+            // Desplazamiento lineal en el mapa
             transform.position += move * speed * Time.deltaTime;
         }
-    }
-    public override void OnNetworkSpawn()
-    {
-        if (IsOwner && !IsServer)
-        {
-            transform.position = NetworkObject.transform.position;
-        }
-    }
-
-    private System.Collections.IEnumerator ForzarSpawnCliente()
-    {
-        yield return new WaitForEndOfFrame();
-        yield return new WaitForEndOfFrame();
-        yield return new WaitForEndOfFrame();
-
-        Vector3 posicionServidor = NetworkObject.transform.position;
-        Quaternion rotacionServidor = NetworkObject.transform.rotation;
-
-        transform.position = posicionServidor;
-        transform.rotation = rotacionServidor;
-
-        Debug.Log($"[CLIENTE] Teletransportación forzada exitosa al spawn del servidor: {posicionServidor}");
     }
 }
