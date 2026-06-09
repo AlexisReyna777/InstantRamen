@@ -56,4 +56,15 @@ public class CanvasGameUI : MonoBehaviour
             }
         }
     }
+    public void AlPresionarReiniciar()
+{
+    if (Unity.Netcode.NetworkManager.Singleton.IsServer)
+    {
+        GameManager.Instance.ReiniciarPartidaServer();
+    }
+    else
+    {
+        Debug.Log("Solo el Host puede reiniciar la partida.");
+    }
+}
 }

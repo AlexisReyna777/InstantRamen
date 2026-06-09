@@ -1,17 +1,21 @@
 using System.Collections.Generic;
 using Unity.Netcode;
+using Unity.Netcode.Components;
 using UnityEngine;
-using UnityEngine.UI; // Asegúrate de importar esto para la UI tradicional, o TMPro si usas TextMeshPro
+using UnityEngine.UI;
 
 public class GameManager : NetworkBehaviour
 {
     public static GameManager Instance { get; private set; }
 
     [Header("Configuración del Juego")]
-    [SerializeField] private float tiempoInicialPartida = 180f; 
+    [SerializeField] private float tiempoInicialPartida = 180f;
 
-    // Variables de Red sincronizadas automáticamente
-    // Guardamos el puntaje del Jugador 0 (Host) y Jugador 1 (Cliente 1) de forma simple para cumplir el MVP
+    [Header("Puntos de Spawn")]
+    // Aquí arrastraremos los Transforms de los objetos vacíos que creamos en el paso 1
+    [SerializeField] private List<Transform> puntosDeSpawn;
+
+    // Variables de Red, manejo de puntos
     public NetworkVariable<int> puntajeHost = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<int> puntajeCliente = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<float> tiempoRestante = new NetworkVariable<float>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -31,12 +35,63 @@ public class GameManager : NetworkBehaviour
             juegoTerminado.Value = false;
             puntajeHost.Value = 0;
             puntajeCliente.Value = 0;
+            NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += AlCompletarCargaDeEscena;
+        }
+    }
+    public override void OnNetworkDespawn()
+    {
+        if (IsServer && NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= AlCompletarCargaDeEscena;
+        }
+    }
+
+    private void AlCompletarCargaDeEscena(string sceneName, UnityEngine.SceneManagement.LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
+{
+    if (!IsServer) return;
+
+    // Ejecutamos la teletransportación con un mini retraso seguro de red
+    StartCoroutine(TeletransportarJugadoresRetrasado(clientsCompleted));
+}
+
+    private System.Collections.IEnumerator TeletransportarJugadoresRetrasado(List<ulong> clientes)
+    {
+    yield return new WaitForEndOfFrame();
+
+    Debug.Log("[SERVIDOR] Teletransportando jugadores de forma segura...");
+    int index = 0;
+
+        foreach (ulong clientId in clientes)
+        {
+            if (NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var networkClient))
+            {
+                NetworkObject playerObject = networkClient.PlayerObject;
+
+                if (playerObject != null && puntosDeSpawn.Count > index)
+                {
+                    Vector3 posicionSpawn = puntosDeSpawn[index].position;
+                    Quaternion rotacionSpawn = puntosDeSpawn[index].rotation;
+
+                
+                    playerObject.transform.position = posicionSpawn;
+                    playerObject.transform.rotation = rotacionSpawn;
+
+                    if (playerObject.TryGetComponent<Unity.Netcode.Components.NetworkTransform>(out Unity.Netcode.Components.NetworkTransform netTransform))
+                    {
+                    
+                        playerObject.transform.position = posicionSpawn; 
+                    }
+
+                    Debug.Log($"[SERVIDOR] Player ID {clientId} enviado con éxito al Spawn {index}");
+                    index++;
+                }
+            }
         }
     }
 
     private void Update()
     {
-        if (!IsServer) return; // Solo el servidor descuenta el tiempo
+        if (!IsServer) return; 
         if (juegoTerminado.Value) return;
 
         if (tiempoRestante.Value > 0)
@@ -50,19 +105,19 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    // El script ZonaEntrega llamará a esta función en el servidor
+    
     public void SumarPuntosServer(ulong clientId, int puntos)
     {
         if (!IsServer) return;
 
-        // Estructura simple recomendada por el enunciado (Puntaje J1, J2, etc.)
-        if (clientId == 0) // El Host suele ser el ID 0
+      
+        if (clientId == 0) 
         {
             puntajeHost.Value += puntos;
         }
         else
         {
-            puntajeCliente.Value += puntos; // Suma al primer cliente conectado
+            puntajeCliente.Value += puntos;
         }
     }
 
@@ -70,6 +125,37 @@ public class GameManager : NetworkBehaviour
     {
         juegoTerminado.Value = true;
         Debug.Log("[SERVIDOR] ¡Tiempo terminado! Fin de la partida.");
-        // Aquí se activará la pantalla de ganador en la fase de UI
+    
     }
+
+    public void ReiniciarPartidaServer()
+{
+    if (!IsServer) return;
+
+    Debug.Log("[SERVIDOR] Iniciando limpieza de red previa al reinicio...");
+
+    
+    ObjetoRecolectable[] todosLosCubos = FindObjectsByType<ObjetoRecolectable>(FindObjectsSortMode.None);
+    foreach (ObjetoRecolectable cubo in todosLosCubos)
+    {
+        if (cubo.TryGetComponent<NetworkObject>(out NetworkObject netObj))
+        {
+            if (netObj.IsSpawned)
+            {
+                netObj.Despawn();
+                Destroy(cubo.gameObject);
+            }
+        }
+    }
+
+    
+    puntajeHost.Value = 0;
+    puntajeCliente.Value = 0;
+    tiempoRestante.Value = tiempoInicialPartida;
+    juegoTerminado.Value = false;
+
+    Debug.Log("[SERVIDOR] Red limpia. Recargando escena de juego...");
+
+    NetworkManager.Singleton.SceneManager.LoadScene("MainScene", UnityEngine.SceneManagement.LoadSceneMode.Single);
+}
 }
