@@ -1,75 +1,134 @@
 using UnityEngine;
 using Unity.Netcode;
+using Unity.Netcode.Components;
 using System.Collections;
 
 public class PlayerMovement : NetworkBehaviour
 {
-    [SerializeField] private float speed = 20f;
+    [Header("Configuración de Movimiento")]
+    [SerializeField] private float speed = 5f;
+    
+    [Header("Modelos Visuales")]
+    [SerializeField] private GameObject modeloHost;
+    [SerializeField] private GameObject modeloCliente;
 
-    void Start()
+    [Header("Avatars Específicos")]
+    [SerializeField] private Avatar avatarHost;
+    [SerializeField] private Avatar avatarCliente;
+    
+    private Animator miAnimator;
+
+    private void Awake()
     {
+        // Capturamos el Animator único de la raíz inmediatamente
+        miAnimator = GetComponent<Animator>();
+    }
 
+    public override void OnNetworkSpawn()
+    {
+        // Cambiamos mallas, avatares y vinculamos el componente de red con autoridad
+        ActualizarVisualesYAvatar();
+
+        // CONFIGURACIÓN DEL COLOR LOCAL
         if (IsOwner)
         {
-            
-            if (TryGetComponent<Renderer>(out Renderer render))
+            Renderer rendererHijo = GetComponentInChildren<Renderer>();
+            if (rendererHijo != null)
             {
-                render.material.color = Color.red;
+                rendererHijo.material.color = Color.red;
             }
+        }
+    }
 
-            StartCoroutine(ForzarSpawnCliente());
+    private void ActualizarVisualesYAvatar()
+    {
+        // ¡NUEVO!: Buscamos primero el OwnerNetworkAnimator para la sincronización de cliente a host
+        NetworkAnimator networkAnimator = GetComponent<OwnerNetworkAnimator>();
+        if (networkAnimator == null) networkAnimator = GetComponent<NetworkAnimator>();
+        if (networkAnimator == null) networkAnimator = GetComponentInChildren<NetworkAnimator>();
+
+        if (miAnimator == null) miAnimator = GetComponent<Animator>();
+
+        if (OwnerClientId == 0) // El Host
+        {
+            if (modeloHost != null) modeloHost.SetActive(true);
+            if (modeloCliente != null) modeloCliente.SetActive(false);
+            
+            // Le ponemos las reglas de huesos del Host al Animator de la raíz
+            if (miAnimator != null && avatarHost != null) miAnimator.avatar = avatarHost;
+        }
+        else // El Cliente
+        {
+            if (modeloHost != null) modeloHost.SetActive(false);
+            if (modeloCliente != null) modeloCliente.SetActive(true);
+            
+            // Le ponemos las reglas de huesos del Cliente al Animator de la raíz
+            if (miAnimator != null && avatarCliente != null) miAnimator.avatar = avatarCliente;
+        }
+
+        // Vinculamos el Animator que acabamos de configurar al componente de red
+        if (networkAnimator != null && miAnimator != null)
+        {
+            networkAnimator.Animator = miAnimator;
         }
     }
 
     void Update()
     {
         if (!IsOwner) return;
+        if (GameManager.Instance != null && !GameManager.Instance.partidaIniciada.Value) return;
 
-        float x = 0f;
-        float z = 0f;
+        float temporalX = Input.GetAxisRaw("Horizontal");
+        float temporalZ = Input.GetAxisRaw("Vertical");
 
-        // Control con WASD
-        if (Input.GetKey(KeyCode.A)) x -= 1f;
-        if (Input.GetKey(KeyCode.D)) x += 1f;
-        if (Input.GetKey(KeyCode.W)) z += 1f;
-        if (Input.GetKey(KeyCode.S)) z -= 1f;
+        float inputX = 0f;
+        float inputZ = 0f;
 
-        // Control con Flechas
-        if (Input.GetKey(KeyCode.LeftArrow))  x -= 1f;
-        if (Input.GetKey(KeyCode.RightArrow)) x += 1f;
-        if (Input.GetKey(KeyCode.UpArrow))    z += 1f;
-        if (Input.GetKey(KeyCode.DownArrow))  z -= 1f;
+        if (Mathf.Abs(temporalX) >= Mathf.Abs(temporalZ))
+        {
+            inputX = temporalX;
+            inputZ = 0f;
+        }
+        else
+        {
+            inputX = 0f;
+            inputZ = temporalZ;
+        }
 
-        
-        Vector3 move = new Vector3(x, 0f, z);
+        Vector3 move = new Vector3(inputX, 0f, inputZ);
 
-        
+        float velocidadActual = move.magnitude;
+        if (miAnimator != null)
+        {
+            miAnimator.SetFloat("Velocidad", velocidadActual);
+        }  
+
         if (move.magnitude > 0.1f)
         {
-            move = move.normalized;
+            Quaternion rotacionObjetivo = Quaternion.LookRotation(move);
+            if (Quaternion.Angle(transform.rotation, rotacionObjetivo) > 0.1f)
+            {
+                transform.rotation = rotacionObjetivo;
+            }
             transform.position += move * speed * Time.deltaTime;
         }
     }
-    public override void OnNetworkSpawn()
+
+    public void TeletransportarASpawn(Vector3 nuevaPosicion, Quaternion nuevaRotacion)
     {
-        if (IsOwner && !IsServer)
+        if (IsServer)
         {
-            transform.position = NetworkObject.transform.position;
+            transform.position = nuevaPosicion;
+            transform.rotation = nuevaRotacion;
+            CambiarPosicionClientRpc(nuevaPosicion, nuevaRotacion);
         }
     }
 
-    private System.Collections.IEnumerator ForzarSpawnCliente()
+    [ClientRpc]
+    private void CambiarPosicionClientRpc(Vector3 pos, Quaternion rot)
     {
-        yield return new WaitForEndOfFrame();
-        yield return new WaitForEndOfFrame();
-        yield return new WaitForEndOfFrame();
-
-        Vector3 posicionServidor = NetworkObject.transform.position;
-        Quaternion rotacionServidor = NetworkObject.transform.rotation;
-
-        transform.position = posicionServidor;
-        transform.rotation = rotacionServidor;
-
-        Debug.Log($"[CLIENTE] Teletransportación forzada exitosa al spawn del servidor: {posicionServidor}");
+        transform.position = pos;
+        transform.rotation = rot;
+        Debug.Log($"[Netcode] Cliente reubicado con éxito en su punto de spawn: {pos}");
     }
 }

@@ -33,6 +33,14 @@ public class ObjectSpawner : NetworkBehaviour
     {
         while (estaSpawneando)
         {
+            // ¡EL ESCUDO CRUCIAL!: Si el GameManager dice que la partida NO empezó, detenemos el flujo acá
+            if (GameManager.Instance == null || !GameManager.Instance.partidaIniciada.Value)
+            {
+                // Esperamos un fotograma (o medio segundo) y volvemos a chequear, sin spawnear nada
+                yield return new WaitForSeconds(0.5f);
+                continue; // Vuelve al inicio del 'while' saltándose todo lo de abajo
+            }
+
             // Limpiamos la lista de objetos destruidos antes de verificar el límite
             objetosActivos.RemoveAll(item => item == null);
 
