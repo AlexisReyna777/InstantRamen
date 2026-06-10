@@ -10,7 +10,7 @@ public class GameManager : NetworkBehaviour
 
     [Header("Configuración del Juego")]
     [SerializeField] private float tiempoInicialPartida = 180f;
-    [SerializeField] private int jugadoresNecesariosParaEmpezar = 2; // ¡NUEVO!
+    [SerializeField] private int jugadoresNecesariosParaEmpezar = 2; 
 
     [Header("Puntos de Spawn")]
     [SerializeField] private List<Transform> puntosDeSpawn;
@@ -20,8 +20,6 @@ public class GameManager : NetworkBehaviour
     public NetworkVariable<int> puntajeCliente = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<float> tiempoRestante = new NetworkVariable<float>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<bool> juegoTerminado = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-    
-    // ¡NUEVO!: Variable de red para avisarle a la UI si la partida realmente empezó
     public NetworkVariable<bool> partidaIniciada = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     private void Awake()
@@ -37,7 +35,7 @@ public class GameManager : NetworkBehaviour
             // Al nacer el GameManager, seteamos todo en "espera"
             tiempoRestante.Value = tiempoInicialPartida;
             juegoTerminado.Value = false;
-            partidaIniciada.Value = false; // El juego NO empieza todavía
+            partidaIniciada.Value = false; 
             puntajeHost.Value = 0;
             puntajeCliente.Value = 0;
 
@@ -73,7 +71,7 @@ public class GameManager : NetworkBehaviour
         if (!IsServer) return;
         Debug.Log($"[SERVIDOR] Se ha desconectado el cliente ID: {clientId}");
         
-        // Opcional: Si el cliente se va en medio de la partida, podrías pausar o terminar el juego
+        // Si el cliente se va en medio de la partida, pausamos el juego
         if (NetworkManager.Singleton.ConnectedClientsIds.Count < jugadoresNecesariosParaEmpezar)
         {
             partidaIniciada.Value = false;
@@ -97,35 +95,67 @@ public class GameManager : NetworkBehaviour
     private void AlCompletarCargaDeEscena(string sceneName, UnityEngine.SceneManagement.LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
     {
         if (!IsServer) return;
+        // Se dispara al iniciar por primera vez y también al reiniciar la escena de juego
         StartCoroutine(TeletransportarJugadoresRetrasado(clientsCompleted));
     }
 
     private System.Collections.IEnumerator TeletransportarJugadoresRetrasado(List<ulong> clientes)
     {
+        // Esperamos a que todo se asiente en la escena recargada
         yield return new WaitForEndOfFrame();
-        int index = 0;
+        yield return new WaitForEndOfFrame();
+
+        Debug.Log($"[SERVIDOR] Reubicando a {clientes.Count} jugadores basados en su ID de red...");
+
         foreach (ulong clientId in clientes)
         {
             if (NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var networkClient))
             {
                 NetworkObject playerObject = networkClient.PlayerObject;
-                if (playerObject != null && puntosDeSpawn.Count > index)
+                if (playerObject != null)
                 {
-                    Vector3 posicionSpawn = puntosDeSpawn[index].position;
-                    Quaternion rotacionSpawn = puntosDeSpawn[index].rotation;
+                    // ---- ASIGNACIÓN DE SPAWN INTELIGENTE POR ID ----
+                    // Si el ID es 0, es el Host (usa el punto 0). 
+                    // Si es cualquier otro número, es el Cliente (usa el punto 1).
+                    int spawnIndex = (clientId == 0) ? 0 : 1;
 
-                    if (playerObject.TryGetComponent<Unity.Netcode.Components.NetworkTransform>(out var netTransform))
+                    // Control de seguridad por si olvidaste poner los 2 puntos en el Inspector
+                    if (puntosDeSpawn == null || puntosDeSpawn.Count <= spawnIndex)
+                    {
+                        Debug.LogError($"[SERVIDOR] ¡Error Crítico! No hay suficientes puntos de spawn asignados en el GameManager para el jugador con ID {clientId}. Necesitas al menos {spawnIndex + 1} puntos.");
+                        continue; 
+                    }
+
+                    Vector3 posicionSpawn = puntosDeSpawn[spawnIndex].position;
+                    Quaternion rotacionSpawn = puntosDeSpawn[spawnIndex].rotation;
+
+                    Debug.Log($"[SERVIDOR] Asignando Punto de Spawn #{spawnIndex} al jugador con ID {clientId}. Posición: {posicionSpawn}");
+
+                    // 1. Forzamos el teletransporte nativo de Netcode si el objeto usa NetworkTransform
+                    if (playerObject.TryGetComponent<NetworkTransform>(out var netTransform))
                     {
                         netTransform.Teleport(posicionSpawn, rotacionSpawn, playerObject.transform.localScale);
+                    }
+                    
+                    // 2. Forzamos el RPC en la pantalla del cliente para que su dueño acepte el cambio
+                    if (playerObject.TryGetComponent<PlayerMovement>(out var movimiento))
+                    {
+                        movimiento.TeletransportarASpawn(posicionSpawn, rotacionSpawn);
                     }
                     else
                     {
                         playerObject.transform.position = posicionSpawn;
                         playerObject.transform.rotation = rotacionSpawn;
                     }
-                    index++;
                 }
             }
+        }
+
+        if (NetworkManager.Singleton.ConnectedClientsIds.Count >= jugadoresNecesariosParaEmpezar)
+        {
+            partidaIniciada.Value = true;
+            juegoTerminado.Value = false;
+            Debug.Log("[SERVIDOR] ¡Todos los jugadores en sus marcas! Partida iniciada de forma segura.");
         }
     }
 
@@ -133,7 +163,7 @@ public class GameManager : NetworkBehaviour
     {
         if (!IsServer) return; 
         
-        // ¡EL ESCUDO DEL UPDATE!: Si la partida NO inició, o ya terminó, congelamos el tiempo
+        // Si la partida NO inició, o ya terminó, congelamos el tiempo
         if (!partidaIniciada.Value || juegoTerminado.Value) return;
 
         if (tiempoRestante.Value > 0)
@@ -193,7 +223,9 @@ public class GameManager : NetworkBehaviour
         puntajeCliente.Value = 0;
         tiempoRestante.Value = tiempoInicialPartida;
         juegoTerminado.Value = false;
-        partidaIniciada.Value = false; // Volvemos a esperar a que carguen de nuevo
+        
+        // APAGAMOS temporalmente la partida mientras carga la escena
+        partidaIniciada.Value = false; 
 
         Debug.Log("[SERVIDOR] Red limpia. Recargando escena de juego...");
         NetworkManager.Singleton.SceneManager.LoadScene("MainScene", UnityEngine.SceneManagement.LoadSceneMode.Single);

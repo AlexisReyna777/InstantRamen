@@ -1,20 +1,35 @@
 using UnityEngine;
 using Unity.Netcode;
+using Unity.Netcode.Components;
 using System.Collections;
 
 public class PlayerMovement : NetworkBehaviour
 {
     [Header("Configuración de Movimiento")]
-    [SerializeField] private float speed = 7f;
+    [SerializeField] private float speed = 5f;
+    
+    [Header("Modelos Visuales")]
+    [SerializeField] private GameObject modeloHost;
+    [SerializeField] private GameObject modeloCliente;
+
+    [Header("Avatars Específicos")]
+    [SerializeField] private Avatar avatarHost;
+    [SerializeField] private Avatar avatarCliente;
     
     private Animator miAnimator;
 
+    private void Awake()
+    {
+        // Capturamos el Animator único de la raíz inmediatamente
+        miAnimator = GetComponent<Animator>();
+    }
+
     public override void OnNetworkSpawn()
     {
-        // Buscamos el Animator en los objetos hijos (tu modelo de Blender)
-        miAnimator = GetComponentInChildren<Animator>();
+        // Cambiamos mallas, avatares y vinculamos el componente de red con autoridad
+        ActualizarVisualesYAvatar();
 
-        // Si somos el dueño de este personaje, cambiamos el color de su malla visual
+        // CONFIGURACIÓN DEL COLOR LOCAL
         if (IsOwner)
         {
             Renderer rendererHijo = GetComponentInChildren<Renderer>();
@@ -22,67 +37,98 @@ public class PlayerMovement : NetworkBehaviour
             {
                 rendererHijo.material.color = Color.red;
             }
-            else
-            {
-                Debug.LogWarning("No se encontró un Renderer en los hijos del Player para cambiar el color.");
-            }
+        }
+    }
+
+    private void ActualizarVisualesYAvatar()
+    {
+        // ¡NUEVO!: Buscamos primero el OwnerNetworkAnimator para la sincronización de cliente a host
+        NetworkAnimator networkAnimator = GetComponent<OwnerNetworkAnimator>();
+        if (networkAnimator == null) networkAnimator = GetComponent<NetworkAnimator>();
+        if (networkAnimator == null) networkAnimator = GetComponentInChildren<NetworkAnimator>();
+
+        if (miAnimator == null) miAnimator = GetComponent<Animator>();
+
+        if (OwnerClientId == 0) // El Host
+        {
+            if (modeloHost != null) modeloHost.SetActive(true);
+            if (modeloCliente != null) modeloCliente.SetActive(false);
+            
+            // Le ponemos las reglas de huesos del Host al Animator de la raíz
+            if (miAnimator != null && avatarHost != null) miAnimator.avatar = avatarHost;
+        }
+        else // El Cliente
+        {
+            if (modeloHost != null) modeloHost.SetActive(false);
+            if (modeloCliente != null) modeloCliente.SetActive(true);
+            
+            // Le ponemos las reglas de huesos del Cliente al Animator de la raíz
+            if (miAnimator != null && avatarCliente != null) miAnimator.avatar = avatarCliente;
+        }
+
+        // Vinculamos el Animator que acabamos de configurar al componente de red
+        if (networkAnimator != null && miAnimator != null)
+        {
+            networkAnimator.Animator = miAnimator;
         }
     }
 
     void Update()
     {
         if (!IsOwner) return;
-
         if (GameManager.Instance != null && !GameManager.Instance.partidaIniciada.Value) return;
 
-        // 1. Leemos los ejes de entrada nativos de Unity (WASD / Flechas)
         float temporalX = Input.GetAxisRaw("Horizontal");
         float temporalZ = Input.GetAxisRaw("Vertical");
 
         float inputX = 0f;
         float inputZ = 0f;
 
-        // 2. FILTRO DE 4 DIRECCIONES: Forzamos el movimiento en cruz (elimina las diagonales)
-        // Comparamos qué eje tiene más presión en el teclado usando valores absolutos.
         if (Mathf.Abs(temporalX) >= Mathf.Abs(temporalZ))
         {
-            // Si domina el movimiento horizontal (o son iguales), anulamos el avance vertical
             inputX = temporalX;
             inputZ = 0f;
         }
         else
         {
-            // Si domina el movimiento vertical, anulamos el avance horizontal
             inputX = 0f;
             inputZ = temporalZ;
         }
 
-        // 3. Creamos el vector de movimiento con los ejes ya filtrados
         Vector3 move = new Vector3(inputX, 0f, inputZ);
 
-        // 4. Mandamos la velocidad limpia al Animator (0 si está quieto, 1 si se mueve)
         float velocidadActual = move.magnitude;
         if (miAnimator != null)
         {
             miAnimator.SetFloat("Velocidad", velocidadActual);
         }  
 
-        // 5. Si hay movimiento, aplicamos la rotación exacta y el desplazamiento físico
         if (move.magnitude > 0.1f)
         {
-            // Como el filtro ya anuló un eje, el vector ya mide 1 de forma perfecta (no hace falta normalized)
-            
-            // Calculamos la rotación fija (0°, 90°, 180° o 270°)
             Quaternion rotacionObjetivo = Quaternion.LookRotation(move);
-
-            // Aplicamos el cambio de frente inmediato sin bucles de indecisión
             if (Quaternion.Angle(transform.rotation, rotacionObjetivo) > 0.1f)
             {
                 transform.rotation = rotacionObjetivo;
             }
-
-            // Desplazamiento lineal en el mapa
             transform.position += move * speed * Time.deltaTime;
         }
+    }
+
+    public void TeletransportarASpawn(Vector3 nuevaPosicion, Quaternion nuevaRotacion)
+    {
+        if (IsServer)
+        {
+            transform.position = nuevaPosicion;
+            transform.rotation = nuevaRotacion;
+            CambiarPosicionClientRpc(nuevaPosicion, nuevaRotacion);
+        }
+    }
+
+    [ClientRpc]
+    private void CambiarPosicionClientRpc(Vector3 pos, Quaternion rot)
+    {
+        transform.position = pos;
+        transform.rotation = rot;
+        Debug.Log($"[Netcode] Cliente reubicado con éxito en su punto de spawn: {pos}");
     }
 }

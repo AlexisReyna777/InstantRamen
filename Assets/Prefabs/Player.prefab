@@ -46,7 +46,8 @@ GameObject:
   - component: {fileID: 5097171649682958350}
   - component: {fileID: 7747868955683912084}
   - component: {fileID: -916953773865461803}
-  - component: {fileID: 3030178636531373468}
+  - component: {fileID: 1212348538435327462}
+  - component: {fileID: 934844584722095417}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -69,6 +70,7 @@ Transform:
   m_Children:
   - {fileID: 2107609577146468779}
   - {fileID: 8025340671639631124}
+  - {fileID: 1782760717707761531}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!136 &5037610039048859720
@@ -106,7 +108,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 3322954905
+  GlobalObjectIdHash: 92982690
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1
@@ -178,7 +180,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   ShowTopMostFoldoutHeaderGroup: 1
-  speed: 5
+  speed: 8
+  modeloHost: {fileID: 7211508193965600686}
+  modeloCliente: {fileID: 1438464407931555265}
+  avatarHost: {fileID: 9000000, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
+  avatarCliente: {fileID: 9000000, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
 --- !u!54 &7747868955683912084
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -223,7 +229,29 @@ MonoBehaviour:
   UseRigidBodyForMotion: 0
   AutoUpdateKinematicState: 1
   AutoSetKinematicOnDespawn: 1
---- !u!114 &3030178636531373468
+--- !u!95 &1212348538435327462
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8583317397557491573}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: 0a83d5b5cb11f6a4ab462b76b264e996, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
+--- !u!114 &934844584722095417
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -232,13 +260,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 8583317397557491573}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e8d0727d5ae3244e3b569694d3912374, type: 3}
+  m_Script: {fileID: 11500000, guid: fe56ceba7b400404d9ca1e6f7154da39, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.Components.NetworkAnimator
+  m_EditorClassIdentifier: Assembly-CSharp::OwnerNetworkAnimator
   ShowTopMostFoldoutHeaderGroup: 1
   NetworkAnimatorExpanded: 0
   AuthorityMode: 0
-  m_Animator: {fileID: 4161202938773958510}
+  m_Animator: {fileID: 1212348538435327462}
   TransitionStateInfoList: []
   AnimatorParameterEntries:
     ParameterEntries:
@@ -247,6 +275,97 @@ MonoBehaviour:
       Synchronize: 1
       ParameterType: 1
   AnimatorParametersExpanded: 0
+--- !u!1001 &2249295195399041168
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 739348303443993018}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      propertyPath: m_Name
+      value: Modelo_Cliente
+      objectReference: {fileID: 0}
+    m_RemovedComponents:
+    - {fileID: 5866666021909216657, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3233086189936953752}
+  m_SourcePrefab: {fileID: 100100000, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+--- !u!1 &1438464407931555265 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+  m_PrefabInstance: {fileID: 2249295195399041168}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &3233086189936953752
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1438464407931555265}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe56ceba7b400404d9ca1e6f7154da39, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::OwnerNetworkAnimator
+  ShowTopMostFoldoutHeaderGroup: 1
+  NetworkAnimatorExpanded: 0
+  AuthorityMode: 0
+  m_Animator: {fileID: 0}
+  TransitionStateInfoList: []
+  AnimatorParameterEntries:
+    ParameterEntries: []
+  AnimatorParametersExpanded: 0
+--- !u!4 &1782760717707761531 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
+  m_PrefabInstance: {fileID: 2249295195399041168}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &7553950200774939391
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -297,7 +416,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
       propertyPath: m_Name
-      value: character13test3
+      value: Modelo_Host
       objectReference: {fileID: 0}
     - target: {fileID: 5866666021909216657, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
       propertyPath: m_Controller
@@ -307,7 +426,8 @@ PrefabInstance:
       propertyPath: m_ApplyRootMotion
       value: 0
       objectReference: {fileID: 0}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 5866666021909216657, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
@@ -315,11 +435,6 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 5592506609672981317}
   m_SourcePrefab: {fileID: 100100000, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
---- !u!95 &4161202938773958510 stripped
-Animator:
-  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
-  m_PrefabInstance: {fileID: 7553950200774939391}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &7211508193965600686 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
@@ -340,14 +455,10 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   NetworkAnimatorExpanded: 0
   AuthorityMode: 0
-  m_Animator: {fileID: 4161202938773958510}
+  m_Animator: {fileID: 0}
   TransitionStateInfoList: []
   AnimatorParameterEntries:
-    ParameterEntries:
-    - name: Velocidad
-      NameHash: 732246236
-      Synchronize: 1
-      ParameterType: 1
+    ParameterEntries: []
   AnimatorParametersExpanded: 0
 --- !u!4 &8025340671639631124 stripped
 Transform:
