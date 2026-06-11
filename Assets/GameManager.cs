@@ -81,7 +81,6 @@ public class GameManager : NetworkBehaviour
 
     private void VerificarInicioDePartida()
     {
-        // Contamos cuántos dispositivos están conectados al NetworkManager actualmente
         int jugadoresActuales = NetworkManager.Singleton.ConnectedClientsIds.Count;
         Debug.Log($"[SERVIDOR] Jugadores conectados actualmente: {jugadoresActuales}/{jugadoresNecesariosParaEmpezar}");
 
@@ -101,7 +100,7 @@ public class GameManager : NetworkBehaviour
 
     private System.Collections.IEnumerator TeletransportarJugadoresRetrasado(List<ulong> clientes)
     {
-        // Esperamos a que todo se asiente en la escena recargada
+        // Esperamos a que todo se asiente en la escena recargada para evitar tirones
         yield return new WaitForEndOfFrame();
         yield return new WaitForEndOfFrame();
 
@@ -114,12 +113,9 @@ public class GameManager : NetworkBehaviour
                 NetworkObject playerObject = networkClient.PlayerObject;
                 if (playerObject != null)
                 {
-                    // ---- ASIGNACIÓN DE SPAWN INTELIGENTE POR ID ----
-                    // Si el ID es 0, es el Host (usa el punto 0). 
-                    // Si es cualquier otro número, es el Cliente (usa el punto 1).
+                    // Asignación de index de Spawn por ID de cliente
                     int spawnIndex = (clientId == 0) ? 0 : 1;
 
-                    // Control de seguridad por si olvidaste poner los 2 puntos en el Inspector
                     if (puntosDeSpawn == null || puntosDeSpawn.Count <= spawnIndex)
                     {
                         Debug.LogError($"[SERVIDOR] ¡Error Crítico! No hay suficientes puntos de spawn asignados en el GameManager para el jugador con ID {clientId}. Necesitas al menos {spawnIndex + 1} puntos.");
@@ -129,21 +125,18 @@ public class GameManager : NetworkBehaviour
                     Vector3 posicionSpawn = puntosDeSpawn[spawnIndex].position;
                     Quaternion rotacionSpawn = puntosDeSpawn[spawnIndex].rotation;
 
-                    Debug.Log($"[SERVIDOR] Asignando Punto de Spawn #{spawnIndex} al jugador con ID {clientId}. Posición: {posicionSpawn}");
+                    Debug.Log($"[SERVIDOR] Solicitando teletransporte seguro al script del jugador ID {clientId} hacia el punto #{spawnIndex}");
 
-                    // 1. Forzamos el teletransporte nativo de Netcode si el objeto usa NetworkTransform
-                    if (playerObject.TryGetComponent<NetworkTransform>(out var netTransform))
-                    {
-                        netTransform.Teleport(posicionSpawn, rotacionSpawn, playerObject.transform.localScale);
-                    }
-                    
-                    // 2. Forzamos el RPC en la pantalla del cliente para que su dueño acepte el cambio
+                    // ¡SOLUCIÓN!: Quitamos el NetworkTransform.Teleport directo del servidor.
+                    // Ahora llamamos exclusivamente al método seguro de tu PlayerMovement, que maneja
+                    // correctamente los RPCs y las restricciones de autoridad.
                     if (playerObject.TryGetComponent<PlayerMovement>(out var movimiento))
                     {
                         movimiento.TeletransportarASpawn(posicionSpawn, rotacionSpawn);
                     }
                     else
                     {
+                        // Respaldo de seguridad solo si el objeto no tiene el script PlayerMovement
                         playerObject.transform.position = posicionSpawn;
                         playerObject.transform.rotation = rotacionSpawn;
                     }
@@ -162,8 +155,6 @@ public class GameManager : NetworkBehaviour
     private void Update()
     {
         if (!IsServer) return; 
-        
-        // Si la partida NO inició, o ya terminó, congelamos el tiempo
         if (!partidaIniciada.Value || juegoTerminado.Value) return;
 
         if (tiempoRestante.Value > 0)
@@ -180,7 +171,6 @@ public class GameManager : NetworkBehaviour
     public void SumarPuntosServer(ulong clientId, int puntos)
     {
         if (!IsServer) return;
-        // Evitamos sumar puntos si alguien hace trampa antes de que se conecten todos
         if (!partidaIniciada.Value || juegoTerminado.Value) return;
 
         if (clientId == 0) 
@@ -196,7 +186,7 @@ public class GameManager : NetworkBehaviour
     private void TerminarPartida()
     {
         juegoTerminado.Value = true;
-        partidaIniciada.Value = false; // Apagamos el flag de juego activo
+        partidaIniciada.Value = false; 
         Debug.Log("[SERVIDOR] ¡Tiempo terminado! Fin de la partida.");
     }
 
@@ -223,8 +213,6 @@ public class GameManager : NetworkBehaviour
         puntajeCliente.Value = 0;
         tiempoRestante.Value = tiempoInicialPartida;
         juegoTerminado.Value = false;
-        
-        // APAGAMOS temporalmente la partida mientras carga la escena
         partidaIniciada.Value = false; 
 
         Debug.Log("[SERVIDOR] Red limpia. Recargando escena de juego...");

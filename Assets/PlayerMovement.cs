@@ -1,5 +1,6 @@
 using UnityEngine;
 using Unity.Netcode;
+using Unity.Netcode.Components; // IMPORTANTE: Necesario para detectar el NetworkTransform
 using System.Collections;
 
 public class PlayerMovement : NetworkBehaviour
@@ -13,6 +14,7 @@ public class PlayerMovement : NetworkBehaviour
 
     [Header("Avatars Específicos")]
     [SerializeField] private Avatar avatarHost;
+    [SerializeField] private Avatar actorCliente; // Nota: Puedes mantener el nombre exacto de tu variable original si lo deseas
     [SerializeField] private Avatar avatarCliente;
     
     private Animator miAnimator;
@@ -80,12 +82,11 @@ public class PlayerMovement : NetworkBehaviour
         float velocidadActual = move.magnitude;
 
         // ANIMACIÓN CONTROLADA POR RED MANUAL
-        // Seteamos nuestra propia animación localmente
         if (miAnimator != null)
         {
             miAnimator.SetFloat("Velocidad", velocidadActual);
         }
-        // Le avisamos al resto del mundo que nos estamos moviendo
+        
         SincronizarAnimacionServerRpc(velocidadActual);
 
         if (move.magnitude > 0.1f)
@@ -99,34 +100,44 @@ public class PlayerMovement : NetworkBehaviour
         }
     }
 
-    // [ServerRpc] -> El cliente le pide al servidor ejecutar esto
     [ServerRpc]
     private void SincronizarAnimacionServerRpc(float velocidad)
     {
-        // El servidor le ordena a todos los clones replicar la velocidad
         SincronizarAnimacionClientRpc(velocidad);
     }
 
-    // [ClientRpc] -> El servidor le cambia el parámetro a todos los clones en la red
     [ClientRpc]
     private void SincronizarAnimacionClientRpc(float velocidad)
     {
-        // Si soy el dueño original, ignoramos el mensaje para que no cause lag visual
         if (IsOwner) return;
 
-        // Forzamos a que el clon en las otras pantallas ejecute la animación
         if (miAnimator != null)
         {
             miAnimator.SetFloat("Velocidad", velocidad);
         }
     }
 
+    // --- CORRECCIÓN DEL TELETRANSPORTE PARA EVITAR EXCEPCIONES DE AUTORIDAD ---
+
     public void TeletransportarASpawn(Vector3 nuevaPosicion, Quaternion nuevaRotacion)
     {
         if (IsServer)
         {
-            transform.position = nuevaPosicion;
-            transform.rotation = nuevaRotacion;
+            NetworkTransform netTransform = GetComponent<NetworkTransform>();
+            
+            // Si el NetworkTransform es autoritativo del Servidor, usamos el método oficial de Netcode
+            if (netTransform != null && netTransform.CanCommitToTransform)
+            {
+                netTransform.Teleport(nuevaPosicion, nuevaRotacion, transform.localScale);
+            }
+            else
+            {
+                // Si no, lo movemos de forma clásica en el servidor
+                transform.position = nuevaPosicion;
+                transform.rotation = nuevaRotacion;
+            }
+
+            // Forzamos la actualización inmediata en los clientes para que no reclamen autoridad
             CambiarPosicionClientRpc(nuevaPosicion, nuevaRotacion);
         }
     }
@@ -134,8 +145,25 @@ public class PlayerMovement : NetworkBehaviour
     [ClientRpc]
     private void CambiarPosicionClientRpc(Vector3 pos, Quaternion rot)
     {
-        transform.position = pos;
-        transform.rotation = rot;
-        Debug.Log($"[Netcode] Cliente reubicado con éxito en su punto de spawn: {pos}");
+        // El Host ya cambió su posición en la función de arriba, evitamos bucles
+        if (IsServer) return;
+
+        NetworkTransform netTransform = GetComponent<NetworkTransform>();
+        
+        if (netTransform != null)
+        {
+            // Apagamos el sincronizador un milisegundo para poder forzar las coordenadas sin que salte el filtro de red
+            netTransform.enabled = false;
+            transform.position = pos;
+            transform.rotation = rot;
+            netTransform.enabled = true;
+        }
+        else
+        {
+            transform.position = pos;
+            transform.rotation = rot;
+        }
+        
+        Debug.Log($"[Netcode] Posición de reinicio sincronizada en el cliente de forma segura: {pos}");
     }
 }

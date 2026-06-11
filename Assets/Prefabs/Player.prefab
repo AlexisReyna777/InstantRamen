@@ -107,7 +107,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 3322954905
+  GlobalObjectIdHash: 92982690
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1
@@ -183,6 +183,7 @@ MonoBehaviour:
   modeloHost: {fileID: 7211508193965600686}
   modeloCliente: {fileID: 1438464407931555265}
   avatarHost: {fileID: 9000000, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
+  actorCliente: {fileID: 0}
   avatarCliente: {fileID: 9000000, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
 --- !u!54 &7747868955683912084
 Rigidbody:
