@@ -1,6 +1,6 @@
 using UnityEngine;
 using Unity.Netcode;
-using Unity.Netcode.Components;
+using Unity.Netcode.Components; // IMPORTANTE: Necesario para detectar el NetworkTransform
 using System.Collections;
 
 public class PlayerMovement : NetworkBehaviour
@@ -14,22 +14,20 @@ public class PlayerMovement : NetworkBehaviour
 
     [Header("Avatars Específicos")]
     [SerializeField] private Avatar avatarHost;
+    [SerializeField] private Avatar actorCliente; // Nota: Puedes mantener el nombre exacto de tu variable original si lo deseas
     [SerializeField] private Avatar avatarCliente;
     
     private Animator miAnimator;
 
     private void Awake()
     {
-        // Capturamos el Animator único de la raíz inmediatamente
         miAnimator = GetComponent<Animator>();
     }
 
     public override void OnNetworkSpawn()
     {
-        // Cambiamos mallas, avatares y vinculamos el componente de red con autoridad
         ActualizarVisualesYAvatar();
 
-        // CONFIGURACIÓN DEL COLOR LOCAL
         if (IsOwner)
         {
             Renderer rendererHijo = GetComponentInChildren<Renderer>();
@@ -42,34 +40,19 @@ public class PlayerMovement : NetworkBehaviour
 
     private void ActualizarVisualesYAvatar()
     {
-        // ¡NUEVO!: Buscamos primero el OwnerNetworkAnimator para la sincronización de cliente a host
-        NetworkAnimator networkAnimator = GetComponent<OwnerNetworkAnimator>();
-        if (networkAnimator == null) networkAnimator = GetComponent<NetworkAnimator>();
-        if (networkAnimator == null) networkAnimator = GetComponentInChildren<NetworkAnimator>();
-
         if (miAnimator == null) miAnimator = GetComponent<Animator>();
 
         if (OwnerClientId == 0) // El Host
         {
             if (modeloHost != null) modeloHost.SetActive(true);
             if (modeloCliente != null) modeloCliente.SetActive(false);
-            
-            // Le ponemos las reglas de huesos del Host al Animator de la raíz
             if (miAnimator != null && avatarHost != null) miAnimator.avatar = avatarHost;
         }
         else // El Cliente
         {
             if (modeloHost != null) modeloHost.SetActive(false);
             if (modeloCliente != null) modeloCliente.SetActive(true);
-            
-            // Le ponemos las reglas de huesos del Cliente al Animator de la raíz
             if (miAnimator != null && avatarCliente != null) miAnimator.avatar = avatarCliente;
-        }
-
-        // Vinculamos el Animator que acabamos de configurar al componente de red
-        if (networkAnimator != null && miAnimator != null)
-        {
-            networkAnimator.Animator = miAnimator;
         }
     }
 
@@ -96,12 +79,15 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         Vector3 move = new Vector3(inputX, 0f, inputZ);
-
         float velocidadActual = move.magnitude;
+
+        // ANIMACIÓN CONTROLADA POR RED MANUAL
         if (miAnimator != null)
         {
             miAnimator.SetFloat("Velocidad", velocidadActual);
-        }  
+        }
+        
+        SincronizarAnimacionServerRpc(velocidadActual);
 
         if (move.magnitude > 0.1f)
         {
@@ -114,12 +100,44 @@ public class PlayerMovement : NetworkBehaviour
         }
     }
 
+    [ServerRpc]
+    private void SincronizarAnimacionServerRpc(float velocidad)
+    {
+        SincronizarAnimacionClientRpc(velocidad);
+    }
+
+    [ClientRpc]
+    private void SincronizarAnimacionClientRpc(float velocidad)
+    {
+        if (IsOwner) return;
+
+        if (miAnimator != null)
+        {
+            miAnimator.SetFloat("Velocidad", velocidad);
+        }
+    }
+
+    // --- CORRECCIÓN DEL TELETRANSPORTE PARA EVITAR EXCEPCIONES DE AUTORIDAD ---
+
     public void TeletransportarASpawn(Vector3 nuevaPosicion, Quaternion nuevaRotacion)
     {
         if (IsServer)
         {
-            transform.position = nuevaPosicion;
-            transform.rotation = nuevaRotacion;
+            NetworkTransform netTransform = GetComponent<NetworkTransform>();
+            
+            // Si el NetworkTransform es autoritativo del Servidor, usamos el método oficial de Netcode
+            if (netTransform != null && netTransform.CanCommitToTransform)
+            {
+                netTransform.Teleport(nuevaPosicion, nuevaRotacion, transform.localScale);
+            }
+            else
+            {
+                // Si no, lo movemos de forma clásica en el servidor
+                transform.position = nuevaPosicion;
+                transform.rotation = nuevaRotacion;
+            }
+
+            // Forzamos la actualización inmediata en los clientes para que no reclamen autoridad
             CambiarPosicionClientRpc(nuevaPosicion, nuevaRotacion);
         }
     }
@@ -127,8 +145,25 @@ public class PlayerMovement : NetworkBehaviour
     [ClientRpc]
     private void CambiarPosicionClientRpc(Vector3 pos, Quaternion rot)
     {
-        transform.position = pos;
-        transform.rotation = rot;
-        Debug.Log($"[Netcode] Cliente reubicado con éxito en su punto de spawn: {pos}");
+        // El Host ya cambió su posición en la función de arriba, evitamos bucles
+        if (IsServer) return;
+
+        NetworkTransform netTransform = GetComponent<NetworkTransform>();
+        
+        if (netTransform != null)
+        {
+            // Apagamos el sincronizador un milisegundo para poder forzar las coordenadas sin que salte el filtro de red
+            netTransform.enabled = false;
+            transform.position = pos;
+            transform.rotation = rot;
+            netTransform.enabled = true;
+        }
+        else
+        {
+            transform.position = pos;
+            transform.rotation = rot;
+        }
+        
+        Debug.Log($"[Netcode] Posición de reinicio sincronizada en el cliente de forma segura: {pos}");
     }
 }
