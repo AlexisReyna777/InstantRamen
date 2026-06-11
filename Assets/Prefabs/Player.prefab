@@ -47,7 +47,6 @@ GameObject:
   - component: {fileID: 7747868955683912084}
   - component: {fileID: -916953773865461803}
   - component: {fileID: 1212348538435327462}
-  - component: {fileID: 934844584722095417}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -108,7 +107,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 92982690
+  GlobalObjectIdHash: 3322954905
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1
@@ -251,30 +250,6 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
---- !u!114 &934844584722095417
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8583317397557491573}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fe56ceba7b400404d9ca1e6f7154da39, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::OwnerNetworkAnimator
-  ShowTopMostFoldoutHeaderGroup: 1
-  NetworkAnimatorExpanded: 0
-  AuthorityMode: 0
-  m_Animator: {fileID: 1212348538435327462}
-  TransitionStateInfoList: []
-  AnimatorParameterEntries:
-    ParameterEntries:
-    - name: Velocidad
-      NameHash: 732246236
-      Synchronize: 1
-      ParameterType: 1
-  AnimatorParametersExpanded: 0
 --- !u!1001 &2249295195399041168
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -331,36 +306,13 @@ PrefabInstance:
     - {fileID: 5866666021909216657, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 3233086189936953752}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
 --- !u!1 &1438464407931555265 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
   m_PrefabInstance: {fileID: 2249295195399041168}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &3233086189936953752
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1438464407931555265}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fe56ceba7b400404d9ca1e6f7154da39, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::OwnerNetworkAnimator
-  ShowTopMostFoldoutHeaderGroup: 1
-  NetworkAnimatorExpanded: 0
-  AuthorityMode: 0
-  m_Animator: {fileID: 0}
-  TransitionStateInfoList: []
-  AnimatorParameterEntries:
-    ParameterEntries: []
-  AnimatorParametersExpanded: 0
 --- !u!4 &1782760717707761531 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
@@ -430,36 +382,13 @@ PrefabInstance:
     - {fileID: 5866666021909216657, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 5592506609672981317}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
 --- !u!1 &7211508193965600686 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
   m_PrefabInstance: {fileID: 7553950200774939391}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &5592506609672981317
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7211508193965600686}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fe56ceba7b400404d9ca1e6f7154da39, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::OwnerNetworkAnimator
-  ShowTopMostFoldoutHeaderGroup: 1
-  NetworkAnimatorExpanded: 0
-  AuthorityMode: 0
-  m_Animator: {fileID: 0}
-  TransitionStateInfoList: []
-  AnimatorParameterEntries:
-    ParameterEntries: []
-  AnimatorParametersExpanded: 0
 --- !u!4 &8025340671639631124 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}

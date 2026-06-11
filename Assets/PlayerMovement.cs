@@ -1,6 +1,5 @@
 using UnityEngine;
 using Unity.Netcode;
-using Unity.Netcode.Components;
 using System.Collections;
 
 public class PlayerMovement : NetworkBehaviour
@@ -20,16 +19,13 @@ public class PlayerMovement : NetworkBehaviour
 
     private void Awake()
     {
-        // Capturamos el Animator único de la raíz inmediatamente
         miAnimator = GetComponent<Animator>();
     }
 
     public override void OnNetworkSpawn()
     {
-        // Cambiamos mallas, avatares y vinculamos el componente de red con autoridad
         ActualizarVisualesYAvatar();
 
-        // CONFIGURACIÓN DEL COLOR LOCAL
         if (IsOwner)
         {
             Renderer rendererHijo = GetComponentInChildren<Renderer>();
@@ -42,34 +38,19 @@ public class PlayerMovement : NetworkBehaviour
 
     private void ActualizarVisualesYAvatar()
     {
-        // ¡NUEVO!: Buscamos primero el OwnerNetworkAnimator para la sincronización de cliente a host
-        NetworkAnimator networkAnimator = GetComponent<OwnerNetworkAnimator>();
-        if (networkAnimator == null) networkAnimator = GetComponent<NetworkAnimator>();
-        if (networkAnimator == null) networkAnimator = GetComponentInChildren<NetworkAnimator>();
-
         if (miAnimator == null) miAnimator = GetComponent<Animator>();
 
         if (OwnerClientId == 0) // El Host
         {
             if (modeloHost != null) modeloHost.SetActive(true);
             if (modeloCliente != null) modeloCliente.SetActive(false);
-            
-            // Le ponemos las reglas de huesos del Host al Animator de la raíz
             if (miAnimator != null && avatarHost != null) miAnimator.avatar = avatarHost;
         }
         else // El Cliente
         {
             if (modeloHost != null) modeloHost.SetActive(false);
             if (modeloCliente != null) modeloCliente.SetActive(true);
-            
-            // Le ponemos las reglas de huesos del Cliente al Animator de la raíz
             if (miAnimator != null && avatarCliente != null) miAnimator.avatar = avatarCliente;
-        }
-
-        // Vinculamos el Animator que acabamos de configurar al componente de red
-        if (networkAnimator != null && miAnimator != null)
-        {
-            networkAnimator.Animator = miAnimator;
         }
     }
 
@@ -96,12 +77,16 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         Vector3 move = new Vector3(inputX, 0f, inputZ);
-
         float velocidadActual = move.magnitude;
+
+        // ANIMACIÓN CONTROLADA POR RED MANUAL
+        // Seteamos nuestra propia animación localmente
         if (miAnimator != null)
         {
             miAnimator.SetFloat("Velocidad", velocidadActual);
-        }  
+        }
+        // Le avisamos al resto del mundo que nos estamos moviendo
+        SincronizarAnimacionServerRpc(velocidadActual);
 
         if (move.magnitude > 0.1f)
         {
@@ -111,6 +96,28 @@ public class PlayerMovement : NetworkBehaviour
                 transform.rotation = rotacionObjetivo;
             }
             transform.position += move * speed * Time.deltaTime;
+        }
+    }
+
+    // [ServerRpc] -> El cliente le pide al servidor ejecutar esto
+    [ServerRpc]
+    private void SincronizarAnimacionServerRpc(float velocidad)
+    {
+        // El servidor le ordena a todos los clones replicar la velocidad
+        SincronizarAnimacionClientRpc(velocidad);
+    }
+
+    // [ClientRpc] -> El servidor le cambia el parámetro a todos los clones en la red
+    [ClientRpc]
+    private void SincronizarAnimacionClientRpc(float velocidad)
+    {
+        // Si soy el dueño original, ignoramos el mensaje para que no cause lag visual
+        if (IsOwner) return;
+
+        // Forzamos a que el clon en las otras pantallas ejecute la animación
+        if (miAnimator != null)
+        {
+            miAnimator.SetFloat("Velocidad", velocidad);
         }
     }
 
