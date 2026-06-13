@@ -29,4 +29,11 @@ public class EfectoColectable : MonoBehaviour
         // Aplicamos la nueva posición manteniendo las coordenadas X y Z originales
         transform.position = new Vector3(transform.position.x, nuevoY, transform.position.z);
     }
+
+    public void DesactivarEfectoYRotar(Quaternion nuevaRotacion)
+    {
+        this.enabled = false;
+
+        transform.localRotation = nuevaRotacion;
+    }
 }

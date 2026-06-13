@@ -1,42 +1,51 @@
 using Unity.Netcode;
 using UnityEngine;
+using System.Collections.Generic;
 
 public class ZonaEntrega : NetworkBehaviour
 {
     private void OnTriggerEnter(Collider other)
     {
-        // REGLA DE ORO: Solo el servidor procesa la entrega y los puntos
-        if (!IsServer) return;
+        if (!IsServer) return; // Solo el servidor procesa la entrega física
 
         if (other.CompareTag("Player"))
         {
-            // 1. Buscamos todos los cubos que el jugador tiene apilados como hijos
-            ObjetoRecolectable[] cubosEntregados = other.GetComponentsInChildren<ObjetoRecolectable>();
-            int cantidadCubos = cubosEntregados.Length;
-
-            // Si el jugador no lleva nada, ignoramos
-            if (cantidadCubos == 0) return;
-
-            Debug.Log($"[SERVIDOR] ¡El jugador entregó {cantidadCubos} objetos!");
-
-            // 2. Destruimos los objetos en la red
-            foreach (ObjetoRecolectable cubo in cubosEntregados)
+            PlayerMovement player = other.GetComponent<PlayerMovement>();
+            
+            if (player != null)
             {
-                // Obtenemos el NetworkObject del cubo y lo removemos de la red
-                NetworkObject netObj = cubo.GetComponent<NetworkObject>();
-                if (netObj != null && netObj.IsSpawned)
+                int cantidadCubos = player.colectablesActuales;
+
+                // Si no lleva nada, ignoramos
+                if (cantidadCubos == 0) return;
+
+                Debug.Log($"[SERVIDOR] ¡El jugador entregó {cantidadCubos} objetos!");
+
+                // OBTENEMOS LAS REFERENCIAS ANTES DE BORRARLAS
+                List<GameObject> cubosAEntregar = new List<GameObject>(player.ObtenerCajasCargadas());
+
+                // 1. ASIGNAR PUNTOS AL GAMEMANAGER
+                if (GameManager.Instance != null)
                 {
-                    netObj.Despawn(); // Despawn los borra de las pantallas de todos los clientes
-                    Destroy(cubo.gameObject); // Destruye el objeto físicamente en el servidor
+                    ulong playerId = other.GetComponent<NetworkObject>().OwnerClientId;
+                    GameManager.Instance.SumarPuntosServer(playerId, cantidadCubos);
                 }
-            }
 
-            // 3. ASIGNAR PUNTOS (Siguiente paso)
-            // Aquí le avisaremos al GameManager que sume 'cantidadCubos' al jugador correspondiente
-            if (GameManager.Instance != null)
-            {
-                ulong playerId = other.GetComponent<NetworkObject>().OwnerClientId;
-                GameManager.Instance.SumarPuntosServer(playerId, cantidadCubos);
+                // 2. ORDEN DE LIMPIEZA PRIMERO: Resetea el peso y la velocidad en todos los clientes
+                player.EntregarColectablesDesdeServidor();
+
+                // 3. DESTRUCCIÓN EN RED SEGUNDO: Ahora que todos limpiaron sus listas, borramos el objeto
+                foreach (GameObject cuboGO in cubosAEntregar)
+                {
+                    if (cuboGO == null) continue;
+
+                    NetworkObject netObj = cuboGO.GetComponent<NetworkObject>();
+                    if (netObj != null && netObj.IsSpawned)
+                    {
+                        netObj.Despawn(); 
+                        Destroy(cuboGO);  
+                    }
+                }
             }
         }
     }
