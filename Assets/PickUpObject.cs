@@ -5,44 +5,53 @@ public class ObjetoRecolectable : NetworkBehaviour
 {
     private bool isPickUp = false;
 
-    [Header("Configuración de la Pila")]
-    [SerializeField] private float alturaBase = 1.5f; // Altura del primer cubo (arriba de la cabeza)
-    [SerializeField] private float tamañoCuboY = 1.0f; // Cuánto mide el cubo de alto (espesor de cada piso)
-
-private void OnTriggerEnter(Collider other)
-{
-    // 1. ¿Llega el choque al servidor?
-    if (!IsServer) return;
-
-    if (isPickUp) return;
-
-    // 2. ¿Detecta que es el jugador?
-    if (other.CompareTag("Player"))
+    private void OnTriggerEnter(Collider other)
     {
+        // 1. Solo el servidor procesa el choque físico e incrementa los puntos reales
+        if (!IsServer) return;
+        if (isPickUp) return;
 
-        Transform pickUpPoint = other.transform.Find("PickUp");
-
-        if (pickUpPoint != null)
+        if (other.CompareTag("Player"))
         {
             isPickUp = true;
 
-            if (TryGetComponent<Collider>(out Collider col))
+            // Desactivamos física y colisión en el servidor inmediatamente
+            if (TryGetComponent<Collider>(out Collider col)) col.enabled = false; 
+            if (TryGetComponent<Rigidbody>(out Rigidbody rb)) rb.isKinematic = true;
+
+            // --- ¡NUEVA LÍNEA PARA REGISTRAR LOS PUNTOS EN EL SERVIDOR! ---
+            // Si tienes un script de estadísticas en el jugador, o en tu GameManager, se lo sumamos aquí.
+            // Por ejemplo, si tu GameManager maneja los puntos de la partida:
+            if (GameManager.Instance != null)
             {
-                col.enabled = false; 
+                // Aquí puedes llamar a tu función de sumar puntos. Ejemplo:
+                // GameManager.Instance.SumarPuntoServer(other.GetComponent<NetworkObject>().OwnerClientId);
             }
 
-            ObjetoRecolectable[] cubosEnLaPila = other.GetComponentsInChildren<ObjetoRecolectable>();
-            int cantidadPrevia = cubosEnLaPila.Length;
+            // Obtenemos los IDs únicos de red para la parte visual
+            ulong idRedCaja = GetComponent<NetworkObject>().NetworkObjectId;
+            ulong idRedPlayer = other.GetComponent<NetworkObject>().NetworkObjectId;
 
-            transform.SetParent(other.transform);
-
-            float alturaCalculada = alturaBase + (cantidadPrevia * tamañoCuboY);
-
-            transform.localPosition = new Vector3(0, alturaCalculada, 0);
-            transform.localRotation = Quaternion.identity;
-
-            Debug.Log($"[SERVIDOR] Cubo apilado con éxito. Posición en la torre: {cantidadPrevia + 1}");
-
+            // Le ordenamos a todas las pantallas que hagan el apilamiento visual
+            AcomodarCajaEnClienteClientRpc(idRedCaja, idRedPlayer);
         }
     }
-}}
+
+    [ClientRpc]
+    private void AcomodarCajaEnClienteClientRpc(ulong idCaja, ulong idPlayer)
+    {
+        // Buscamos la caja y el jugador de forma segura en CUALQUIER cliente usando el SpawnManager global
+        var objetosSincronizados = NetworkManager.Singleton.SpawnManager.SpawnedObjects;
+
+        if (objetosSincronizados.TryGetValue(idCaja, out var netCaja) && 
+            objetosSincronizados.TryGetValue(idPlayer, out var netPlayer))
+        {
+            PlayerMovement movimiento = netPlayer.GetComponent<PlayerMovement>();
+            if (movimiento != null)
+            {
+                // Pasamos el GameObject de la caja al LateUpdate del jugador de forma local en cada pantalla
+                movimiento.RecogerColectable(netCaja.gameObject);
+            }
+        }
+    }
+}

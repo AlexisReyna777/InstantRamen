@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 7608167595112777807}
   - component: {fileID: -8177719820633200269}
   - component: {fileID: 2400201921612246002}
+  - component: {fileID: 4268734540981665734}
   m_Layer: 0
   m_Name: Cube
   m_TagString: pickUpPoint
@@ -201,3 +202,18 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   alturaBase: 1.5
   "tama\xF1oCuboY": 0.3
+--- !u!114 &4268734540981665734
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8143645020946657262}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7f84205682fcec4781b8fcf8988ee7b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EfectoColectable
+  velocidadGiro: 50
+  velocidadFlotar: 2
+  amplitudFlotar: 0.15
