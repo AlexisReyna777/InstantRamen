@@ -450,7 +450,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: '::'
   ShowTopMostFoldoutHeaderGroup: 1
-  objetoPrefab: {fileID: 8143645020946657262, guid: 054854a47b3f43e4ebd932df52c1f1c8, type: 3}
+  prefabsColectables:
+  - {fileID: 8143645020946657262, guid: 054854a47b3f43e4ebd932df52c1f1c8, type: 3}
+  - {fileID: 8143645020946657262, guid: 486052e34c1660b45a542f6d11f49bb8, type: 3}
+  - {fileID: 8143645020946657262, guid: b20e7a74702a06f46af477592e2fb32c, type: 3}
+  porcientoNormal: 60
+  porcientoMaldita: 20
+  porcientoEncogedora: 20
   tiempoEntreSpawns: 2
   maxObjetosEnMapa: 20
   capasProhibidas:
@@ -1797,7 +1803,7 @@ Transform:
   m_GameObject: {fileID: 929666419}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -1, z: -0, w: 0.0000005066394}
-  m_LocalPosition: {x: 1.26, y: -0.88, z: 8.74}
+  m_LocalPosition: {x: 1.54, y: -0.88, z: 8.74}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -2103,7 +2109,7 @@ Transform:
   m_GameObject: {fileID: 1275301802}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -1, z: -0, w: 0.0000004768371}
-  m_LocalPosition: {x: -1.6, y: -0.87, z: 8.74}
+  m_LocalPosition: {x: -1.34, y: -0.87, z: 8.74}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

@@ -6,7 +6,13 @@ using UnityEngine;
 public class ObjectSpawner : NetworkBehaviour
 {
     [Header("Configuración del Spawn")]
-    [SerializeField] private GameObject objetoPrefab; // El prefab que tiene el componente NetworkObject
+    [SerializeField] private GameObject[] prefabsColectables; // Elemento 0: Normal | Elemento 1: Maldita | Elemento 2: Encogedora
+
+    [Header("Distribución de Probabilidades (Debe sumar 100%)")]
+    [Range(0f, 100f)] [SerializeField] private float porcientoNormal = 60f;
+    [Range(0f, 100f)] [SerializeField] private float porcientoMaldita = 20f;
+    [Range(0f, 100f)] [SerializeField] private float porcientoEncogedora = 20f;
+
     [SerializeField] private float tiempoEntreSpawns = 3.0f; // Cada cuántos segundos aparece uno nuevo
     [SerializeField] private int maxObjetosEnMapa = 10; // Límite para no saturar el juego de cubos
 
@@ -23,12 +29,16 @@ public class ObjectSpawner : NetworkBehaviour
     private List<GameObject> objetosActivos = new List<GameObject>();
     private bool estaSpawneando = false;
 
-    // OnNetworkSpawn se ejecuta automáticamente cuando el sistema de red se inicia en la escena
     public override void OnNetworkSpawn()
     {
-        // IMPORTANTE: Solo el servidor/host debe ejecutar la lógica del Spawn
         if (IsServer)
         {
+            if (prefabsColectables == null || prefabsColectables.Length == 0)
+            {
+                Debug.LogError("[SPAWNER] No has asignado ningún prefab en el array 'Prefabs Colectables'.");
+                return;
+            }
+
             estaSpawneando = true;
             StartCoroutine(SpawnRoutine());
         }
@@ -38,15 +48,12 @@ public class ObjectSpawner : NetworkBehaviour
     {
         while (estaSpawneando)
         {
-            // ¡EL ESCUDO CRUCIAL!: Si el GameManager dice que la partida NO empezó, detenemos el flujo acá
             if (GameManager.Instance == null || !GameManager.Instance.partidaIniciada.Value)
             {
-                // Esperamos un fotograma (o medio segundo) y volvemos a chequear, sin spawnear nada
                 yield return new WaitForSeconds(0.5f);
-                continue; // Vuelve al inicio del 'while' saltándose todo lo de abajo
+                continue;
             }
 
-            // Limpiamos la lista de objetos destruidos antes de verificar el límite
             objetosActivos.RemoveAll(item => item == null);
 
             if (objetosActivos.Count < maxObjetosEnMapa)
@@ -54,7 +61,6 @@ public class ObjectSpawner : NetworkBehaviour
                 SpawnearObjeto();
             }
 
-            // Espera el tiempo configurado antes de la siguiente iteración
             yield return new WaitForSeconds(tiempoEntreSpawns);
         }
     }
@@ -64,49 +70,76 @@ public class ObjectSpawner : NetworkBehaviour
         Vector3 posicionValida = Vector3.zero;
         bool posicionEncontrada = false;
 
-        // Intentamos buscar un punto limpio en el mapa varias veces en el mismo frame
         for (int i = 0; i < intentosMaximosPorCaja; i++)
         {
-            // 1. Calcular una posición aleatoria tentativa
             float randomX = Random.Range(-rangoX, rangoX);
             float randomZ = Random.Range(-rangoZ, rangoZ);
             Vector3 posicionTentativa = new Vector3(randomX, alturaY, randomZ);
 
-            // 2. Comprobamos si esa esfera matemática choca con las capas prohibidas (muros, colisionadores invisibles, etc.)
             if (!Physics.CheckSphere(posicionTentativa, radioDeValidacion, capasProhibidas))
             {
                 posicionValida = posicionTentativa;
                 posicionEncontrada = true;
-                break; // Rompemos el ciclo porque encontramos un lugar perfecto
+                break;
             }
         }
 
-        // Si después de los intentos no encontramos un punto libre, saltamos este spawn para no congelar el servidor
         if (!posicionEncontrada)
         {
             Debug.LogWarning("[SPAWNER] Se canceló el spawn de una caja: el área seleccionada estaba obstruida por muros.");
             return;
         }
 
-        // 3. Instanciar el prefab localmente en el Servidor en la posición segura
-        GameObject nuevoObjeto = Instantiate(objetoPrefab, posicionValida, Quaternion.identity);
+        // Seleccionamos la caja con el nuevo equilibrio de probabilidades
+        GameObject prefabAInstanciar = SeleccionarPrefabPorProbabilidad();
 
-        // 4. Añadirlo a la lista para controlar el límite máximo
+        if (prefabAInstanciar == null) return;
+
+        GameObject nuevoObjeto = Instantiate(prefabAInstanciar, posicionValida, Quaternion.identity);
         objetosActivos.Add(nuevoObjeto);
 
-        // 5. ¡LA CLAVE DE NETCODE!: Obtener su NetworkObject y spawnearlo en la red
         NetworkObject netObj = nuevoObjeto.GetComponent<NetworkObject>();
         if (netObj != null)
         {
-            netObj.Spawn(); // Esto le avisa a todos los clientes que deben crear este objeto en sus pantallas
+            netObj.Spawn();
         }
         else
         {
-            Debug.LogError("El Prefab asignado al Spawner NO tiene un componente NetworkObject.");
+            Debug.LogError($"El Prefab '{prefabAInstanciar.name}' asignado al Spawner NO tiene un componente NetworkObject.");
         }
     }
 
-    // Detener la rutina si el script se destruye o termina la partida
+    // --- NUEVA LÓGICA DE EQUILIBRIO DE 3 COLECTABLES ---
+    private GameObject SeleccionarPrefabPorProbabilidad()
+    {
+        // Si solo hay un prefab asignado, no hay nada que calcular
+        if (prefabsColectables.Length == 1) return prefabsColectables[0];
+
+        // Tiramos un dado entre 0.0 y 100.0
+        float dado = Random.Range(0f, 100f);
+
+        // Rango 1: Caja Normal (De 0 hasta porcientoNormal)
+        if (dado <= porcientoNormal)
+        {
+            return prefabsColectables[0]; 
+        }
+        
+        // Rango 2: Caja Maldita (De porcientoNormal hasta porcientoNormal + porcientoMaldita)
+        if (dado <= (porcientoNormal + porcientoMaldita) && prefabsColectables.Length > 1)
+        {
+            return prefabsColectables[1]; 
+        }
+        
+        // Rango 3: Caja Encogedora (Cualquier valor restante arriba de los anteriores)
+        if (prefabsColectables.Length > 2)
+        {
+            return prefabsColectables[2]; 
+        }
+
+        // Por si acaso el array no tiene los 3 elementos cargados todavía en el Inspector
+        return prefabsColectables[0];
+    }
+
     public override void OnNetworkDespawn()
     {
         estaSpawneando = false;
