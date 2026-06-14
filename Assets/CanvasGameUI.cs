@@ -10,7 +10,22 @@ public class CanvasGameUI : MonoBehaviour
     
     [Header("Pantalla Final")]
     [SerializeField] private GameObject panelFinDePartida;
-    [SerializeField] private Text textoGanador;
+    [SerializeField] private Text textoGanador; // Se ocultará al iniciar la partida
+
+    private void Start()
+    {
+        // --- SOLUCIÓN VISUAL: Ocultamos el texto del ganador para evitar el "New Text" ---
+        if (textoGanador != null)
+        {
+            textoGanador.gameObject.SetActive(false);
+        }
+
+        // Aseguramos que el panel final empiece apagado por si acaso
+        if (panelFinDePartida != null)
+        {
+            panelFinDePartida.SetActive(false);
+        }
+    }
 
     private void Update()
     {
@@ -42,6 +57,9 @@ public class CanvasGameUI : MonoBehaviour
 
                 if (textoGanador != null)
                 {
+                    // ¡MÁGIA!: Hacemos visible el texto del ganador solo cuando la partida termina
+                    textoGanador.gameObject.SetActive(true);
+
                     int ptsHost = GameManager.Instance.puntajeHost.Value;
                     int ptsCliente = GameManager.Instance.puntajeCliente.Value;
 
@@ -53,18 +71,25 @@ public class CanvasGameUI : MonoBehaviour
             else
             {
                 panelFinDePartida.SetActive(false);
+
+                // Si por alguna razón la partida se reinicia o des-pausa, volvemos a ocultar el texto
+                if (textoGanador != null)
+                {
+                    textoGanador.gameObject.SetActive(false);
+                }
             }
         }
     }
+
     public void AlPresionarReiniciar()
-{
-    if (Unity.Netcode.NetworkManager.Singleton.IsServer)
     {
-        GameManager.Instance.ReiniciarPartidaServer();
+        if (Unity.Netcode.NetworkManager.Singleton.IsServer)
+        {
+            GameManager.Instance.ReiniciarPartidaServer();
+        }
+        else
+        {
+            Debug.Log("Solo el Host puede reiniciar la partida.");
+        }
     }
-    else
-    {
-        Debug.Log("Solo el Host puede reiniciar la partida.");
-    }
-}
 }
