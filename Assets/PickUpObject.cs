@@ -1,9 +1,16 @@
 using Unity.Netcode;
 using UnityEngine;
 
+
+
 public class ObjetoRecolectable : NetworkBehaviour
 {
     private bool isPickUp = false;
+
+    [Header("Configuración de Tipo")]
+    [SerializeField] private bool esMaldito = false;
+    [SerializeField] private float duracionEfectoMalo = 5.0f; // Segundos que durará invertido
+    [SerializeField] private bool esCajaEncogedora = false; // Activa esto en el Inspector para la caja de encoger
 
     private void OnTriggerEnter(Collider other)
     {
@@ -40,17 +47,26 @@ public class ObjetoRecolectable : NetworkBehaviour
     [ClientRpc]
     private void AcomodarCajaEnClienteClientRpc(ulong idCaja, ulong idPlayer)
     {
-        // Buscamos la caja y el jugador de forma segura en CUALQUIER cliente usando el SpawnManager global
         var objetosSincronizados = NetworkManager.Singleton.SpawnManager.SpawnedObjects;
 
         if (objetosSincronizados.TryGetValue(idCaja, out var netCaja) && 
             objetosSincronizados.TryGetValue(idPlayer, out var netPlayer))
         {
-            PlayerMovement movimiento = netPlayer.GetComponent<PlayerMovement>();
+            PlayerMovement movimiento = netPlayer.GetComponent<NetworkObject>().GetComponent<PlayerMovement>();
             if (movimiento != null)
             {
-                // Pasamos el GameObject de la caja al LateUpdate del jugador de forma local en cada pantalla
+                // Pasamos la caja al LateUpdate para el apilamiento visual
                 movimiento.RecogerColectable(netCaja.gameObject);
+
+                // --- NUEVO: SI LA CAJA ES MALDITA, INVERTIMOS LOS CONTROLES ---
+                if (esMaldito)
+                {
+                    movimiento.AplicarEfectoInversion(duracionEfectoMalo);
+                }
+                if (esCajaEncogedora)
+                {
+                    movimiento.AplicarEfectoEncoger(duracionEfectoMalo); // Reutilizamos la misma variable de duración
+                }
             }
         }
     }

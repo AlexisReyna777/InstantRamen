@@ -7,35 +7,44 @@ using Unity.Services.Relay;
 using Unity.Services.Relay.Models;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
+using UnityEngine.SceneManagement;
 using System; 
 
 public class RelayManager : MonoBehaviour
 {
+    [Header("Componentes de UI de los Botones")]
     [SerializeField] private Button hostButton;
     [SerializeField] private Button joinButton;
-    [SerializeField] private TMP_InputField joinInput;
-    [SerializeField] private TextMeshProUGUI codeText;
+    [SerializeField] private Button salirButton;
+    [SerializeField] private Button iniciarPartidaButton; 
+
+    [Header("Componentes de UI de Texto")]
+    [SerializeField] private TMP_InputField joinInput; 
+    [SerializeField] private TextMeshProUGUI codeText; // Se ocultará al inicio
+    [SerializeField] private TextMeshProUGUI estadoConexionText; // Se ocultará al inicio
+
+    [Header("Configuración de Escena")]
+    [SerializeField] private string nombreEscenaJuego = "MainScene"; 
 
     async void Start()
     {
-        
+        // --- SOLUCIÓN VISUAL: Ocultamos los textos y botones al arrancar el juego ---
+        if (iniciarPartidaButton != null) iniciarPartidaButton.gameObject.SetActive(false);
+        if (codeText != null) codeText.gameObject.SetActive(false);
+        if (estadoConexionText != null) estadoConexionText.gameObject.SetActive(false);
+
+        // Inicialización de servicios de Unity
         if (UnityServices.State == ServicesInitializationState.Uninitialized)
         {
             await UnityServices.InitializeAsync();
         }
 
-        
         if (!AuthenticationService.Instance.IsSignedIn)
         {
-            Debug.Log("Jugador no logueado. Iniciando sesión de forma anónima...");
             await AuthenticationService.Instance.SignInAnonymouslyAsync();
         }
-        else
-        {
-            Debug.Log("El jugador ya estaba autenticado de la escena anterior. Saltando login.");
-        }
 
-        
+        // Configuración de listeners de botones
         if (hostButton != null)
         {
             hostButton.onClick.RemoveAllListeners(); 
@@ -47,19 +56,62 @@ public class RelayManager : MonoBehaviour
             joinButton.onClick.RemoveAllListeners();
             joinButton.onClick.AddListener(OnJoinButtonClicked);
         }
-    }
 
-    // Funciones intermediarias obligatorias para botones tradicionales cuando usas métodos "async"
-    private void OnHostButtonClicked()
-    {
-        CreateRelay();
-    }
-
-    private void OnJoinButtonClicked()
-    {
-        if (joinInput != null)
+        if (salirButton != null)
         {
-            JoinRelay(joinInput.text);
+            salirButton.onClick.RemoveAllListeners();
+            salirButton.onClick.AddListener(OnSalirButtonClicked);
+        }
+
+        if (iniciarPartidaButton != null)
+        {
+            iniciarPartidaButton.onClick.RemoveAllListeners();
+            iniciarPartidaButton.onClick.AddListener(OnIniciarPartidaButtonClicked);
+        }
+
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
+        }
+    }
+
+    private void OnHostButtonClicked() => CreateRelay();
+    private void OnJoinButtonClicked() => JoinRelay(joinInput?.text);
+    private void OnSalirButtonClicked() => Application.Quit();
+
+    private void OnIniciarPartidaButtonClicked()
+    {
+        if (NetworkManager.Singleton.IsServer)
+        {
+            if (estadoConexionText != null) estadoConexionText.text = "Cargando mundo...";
+            NetworkManager.Singleton.SceneManager.LoadScene(nombreEscenaJuego, LoadSceneMode.Single);
+        }
+    }
+
+    private void OnClientConnected(ulong clientId)
+    {
+        if (clientId != NetworkManager.Singleton.LocalClientId)
+        {
+            Debug.Log($"[SALA] ¡Cliente conectado con ID: {clientId}!");
+            
+            if (estadoConexionText != null)
+            {
+                estadoConexionText.gameObject.SetActive(true); // Aseguramos que sea visible
+                estadoConexionText.text = "¡Cliente conectado! Listo para empezar.";
+            }
+            
+            if (NetworkManager.Singleton.IsServer && iniciarPartidaButton != null)
+            {
+                iniciarPartidaButton.gameObject.SetActive(true);
+            }
         }
     }
    
@@ -67,52 +119,69 @@ public class RelayManager : MonoBehaviour
     {
         try
         {
-            Debug.Log("[RELAY] Intentando crear asignación en la nube...");
-            // Asignación para 3 invitados max
-            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(3);
+            // Hacemos visible el texto de estado para mostrar el progreso
+            if (estadoConexionText != null)
+            {
+                estadoConexionText.gameObject.SetActive(true);
+                estadoConexionText.text = "Creando sala...";
+            }
             
-            // Genera el código
+            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(3);
             string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
             
-            if (codeText != null) codeText.text = "Code: " + joinCode;
-            Debug.Log($"[RELAY] Código generado con éxito: {joinCode}");
+            // Mostramos el código generado
+            if (codeText != null) 
+            {
+                codeText.gameObject.SetActive(true);
+                codeText.text = "Code: " + joinCode;
+            }
 
-            // Configura el transporte de red de Unity (UTP)
+            if (estadoConexionText != null) estadoConexionText.text = "Esperando al cliente...";
+
             var relayServerData = AllocationUtils.ToRelayServerData(allocation, "dtls");
             NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
 
-            // Enciende el Host e instancia al Player automáticamente
             NetworkManager.Singleton.StartHost();
-            Debug.Log("[NETCODE] ¡Host iniciado con éxito!");
+            Debug.Log("[NETCODE] Host iniciado.");
+
+            if (hostButton != null) hostButton.interactable = false;
+            if (joinButton != null) joinButton.interactable = false;
         }
         catch (Exception e)
         {
+            if (estadoConexionText != null) estadoConexionText.text = "Error al crear sala.";
             Debug.LogError($"Error al crear el Relay: {e.Message}");
         }
     }
 
     async void JoinRelay(string joinCode)
     {
-        if (string.IsNullOrEmpty(joinCode))
-        {
-            Debug.LogWarning("El código de unión está vacío.");
-            return;
-        }
+        if (string.IsNullOrEmpty(joinCode)) return;
 
         try
         {
-            Debug.Log($"[RELAY] Intentando unirse con el código: {joinCode}");
+            // Hacemos visible el texto de estado en el cliente
+            if (estadoConexionText != null)
+            {
+                estadoConexionText.gameObject.SetActive(true);
+                estadoConexionText.text = "Conectando...";
+            }
+
             var joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
             
             var relayServerData = AllocationUtils.ToRelayServerData(joinAllocation, "dtls");
             NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
 
-            // Enciende el cliente
             NetworkManager.Singleton.StartClient();
-            Debug.Log("[NETCODE] ¡Cliente iniciado y conectando al Host!");
+            
+            if (estadoConexionText != null) estadoConexionText.text = "¡Conectado! Esperando al Host...";
+            
+            if (hostButton != null) hostButton.interactable = false;
+            if (joinButton != null) joinButton.interactable = false;
         }
         catch (Exception e)
         {
+            if (estadoConexionText != null) estadoConexionText.text = "Error: Código inválido.";
             Debug.LogError($"Error al unirse al Relay: {e.Message}");
         }
     }

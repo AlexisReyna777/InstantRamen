@@ -25,8 +25,13 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private Avatar actorCliente; // Nota: Mantenido por si está mapeado en el Inspector
     [SerializeField] private Avatar avatarCliente;
     
+    private bool controlesInvertidos = false;
+    private Coroutine rutinaInversion;
     private Animator miAnimator;
-    
+    private bool esDiminuto = false;
+    private Coroutine rutinaTamano;
+    [SerializeField] private float multiplicadorVelocidadChiquito = 1.35f;
+
     // MODIFICADO: Ahora es una propiedad pública con 'private set' para que ZonaEntrega lea las cajas actuales
     public int colectablesActuales { get; private set; } = 0;
     private float velocidadModificada;
@@ -88,6 +93,12 @@ public class PlayerMovement : NetworkBehaviour
 
         float inputX = 0f;
         float inputZ = 0f;
+
+        if (controlesInvertidos)
+        {
+            temporalX *= -1f;
+            temporalZ *= -1f;
+        }
 
         if (Mathf.Abs(temporalX) >= Mathf.Abs(temporalZ))
         {
@@ -193,6 +204,14 @@ public class PlayerMovement : NetworkBehaviour
     [ClientRpc]
     private void LimpiarPesoClientRpc()
     {
+        if (rutinaTamano != null)
+        {
+            StopCoroutine(rutinaTamano);
+            transform.localScale = Vector3.one;
+            esDiminuto = false;
+            rutinaTamano = null;
+        }
+
         // CORREGIDO: Todos los clientes limpian las cajas visuales de sus mundos
         cajasCargadasVisuales.Clear();
 
@@ -210,6 +229,12 @@ public class PlayerMovement : NetworkBehaviour
         
         // Protegemos que no sea inferior a la velocidad mínima para que el player se mueva
         velocidadModificada = Mathf.Max(calculoNuevaVelocidad, velocidadMinima);
+
+        // --- NUEVO: SI ES DIMINUTO, APLICAMOS UN BONUS DE VELOCIDAD RAPIDÍSIMA ---
+        if (esDiminuto)
+        {
+            velocidadModificada *= multiplicadorVelocidadChiquito;
+        }
 
         Debug.Log($"[PESO LOG] Player ID: {OwnerClientId} | Cajas: {colectablesActuales} | Velocidad resultante: {velocidadModificada}m/s");
     }
@@ -260,5 +285,56 @@ public class PlayerMovement : NetworkBehaviour
         }
         
         Debug.Log($"[Netcode] Posición de reinicio sincronizada en el cliente de forma segura: {pos}");
+    }
+
+    public void AplicarEfectoInversion(float duracion)
+    {
+        // Si ya estábamos invertidos, detenemos la cuenta atrás anterior para iniciar una nueva limpia
+        if (rutinaInversion != null) StopCoroutine(rutinaInversion);
+        
+        rutinaInversion = StartCoroutine(RutinaInvertirControles(duracion));
+    }
+
+    private IEnumerator RutinaInvertirControles(float duracion)
+    {
+        controlesInvertidos = true;
+        Debug.LogWarning($"[MALDICIÓN] ¡Controles invertidos para el jugador {OwnerClientId}!");
+
+        yield return new WaitForSeconds(duracion);
+
+        controlesInvertidos = false;
+        Debug.Log($"[MALDICIÓN] Controles restaurados para el jugador {OwnerClientId}.");
+        rutinaInversion = null;
+    }
+
+    public void AplicarEfectoEncoger(float duracion)
+    {
+        // Si ya éramos chiquitos, reiniciamos el temporizador
+        if (rutinaTamano != null) StopCoroutine(rutinaTamano);
+        rutinaTamano = StartCoroutine(RutinaEncogerPersonaje(duracion));
+    }
+
+    private IEnumerator RutinaEncogerPersonaje(float duracion)
+    {
+        esDiminuto = true;
+        
+        // Encogemos el personaje al 30% de su tamaño original
+        transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);
+        
+        // Al encogerse, recalculamos la velocidad para aplicar el buf de velocidad extra
+        RecalcularVelocidad();
+        
+        Debug.LogWarning($"[MUTACIÓN] ¡Jugador {OwnerClientId} se ha encogido!");
+
+        yield return new WaitForSeconds(duracion);
+
+        // Volvemos a la normalidad
+        transform.localScale = Vector3.one;
+        esDiminuto = false;
+        
+        RecalcularVelocidad();
+        
+        Debug.Log($"[MUTACIÓN] Jugador {OwnerClientId} regresó a su tamaño normal.");
+        rutinaTamano = null;
     }
 }
