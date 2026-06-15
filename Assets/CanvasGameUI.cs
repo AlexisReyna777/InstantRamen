@@ -4,81 +4,110 @@ using UnityEngine.UI; // Cambiar por "using TMPro;" si usas TextMeshPro
 public class CanvasGameUI : MonoBehaviour
 {
     [Header("Componentes de la UI")]
-    [SerializeField] private Text textoTiempo; // Cambiar a TMP_Text si usas TextMeshPro
+    [SerializeField] private Text textoTiempo; 
     [SerializeField] private Text textoPuntajeHost;
     [SerializeField] private Text textoPuntajeCliente;
     
-    [Header("Pantalla Final")]
+    [Header("Pantalla Final (Popups)")]
     [SerializeField] private GameObject panelFinDePartida;
-    [SerializeField] private Text textoGanador; // Se ocultará al iniciar la partida
+    
+    // --- NUEVAS VARIABLES PARA TUS IMÁGENES ---
+    [SerializeField] private GameObject cartelVictoria;
+    [SerializeField] private GameObject cartelDerrota;
+    [SerializeField] private GameObject cartelEmpate;
 
     private void Start()
     {
-        // --- SOLUCIÓN VISUAL: Ocultamos el texto del ganador para evitar el "New Text" ---
-        if (textoGanador != null)
-        {
-            textoGanador.gameObject.SetActive(false);
-        }
-
-        // Aseguramos que el panel final empiece apagado por si acaso
+        // Al iniciar la partida, nos aseguramos de que TODO el panel final esté apagado
         if (panelFinDePartida != null)
         {
             panelFinDePartida.SetActive(false);
         }
+        
+        // Apagamos los carteles por si acaso quedaron encendidos en el Inspector
+        DesactivarTodosLosCarteles();
     }
 
     private void Update()
     {
-        // Primer escudo: Si el GameManager aún no nació, esperamos.
         if (GameManager.Instance == null) return;
 
-        // Segundo escudo: Solo actualizamos si las casillas están asignadas en el Inspector
-        if (textoTiempo != null)
-        {
-            textoTiempo.text = "Tiempo: " + Mathf.CeilToInt(GameManager.Instance.tiempoRestante.Value).ToString();
-        }
+        // Actualización de textos de gameplay (Tiempo y Puntos)
+        if (textoTiempo != null) textoTiempo.text = "Tiempo: " + Mathf.CeilToInt(GameManager.Instance.tiempoRestante.Value).ToString();
+        if (textoPuntajeHost != null) textoPuntajeHost.text = "Puntos Host: " + GameManager.Instance.puntajeHost.Value;
+        if (textoPuntajeCliente != null) textoPuntajeCliente.text = "Puntos Cliente: " + GameManager.Instance.puntajeCliente.Value;
 
-        if (textoPuntajeHost != null)
-        {
-            textoPuntajeHost.text = "Puntos Host: " + GameManager.Instance.puntajeHost.Value;
-        }
-
-        if (textoPuntajeCliente != null)
-        {
-            textoPuntajeCliente.text = "Puntos Cliente: " + GameManager.Instance.puntajeCliente.Value;
-        }
-
-        // Control del panel final
+        // --- CONTROL DEL POPUP FINAL DE PARTIDA ---
         if (panelFinDePartida != null)
         {
             if (GameManager.Instance.juegoTerminado.Value)
             {
-                panelFinDePartida.SetActive(true);
-
-                if (textoGanador != null)
+                // Solo si el panel está apagado, calculamos los carteles (para evitar que se ejecute en bucle cada frame)
+                if (!panelFinDePartida.activeSelf)
                 {
-                    // ¡MÁGIA!: Hacemos visible el texto del ganador solo cuando la partida termina
-                    textoGanador.gameObject.SetActive(true);
-
-                    int ptsHost = GameManager.Instance.puntajeHost.Value;
-                    int ptsCliente = GameManager.Instance.puntajeCliente.Value;
-
-                    if (ptsHost > ptsCliente) textoGanador.text = "¡Ganador: HOST!";
-                    else if (ptsCliente > ptsHost) textoGanador.text = "¡Ganador: CLIENTE!";
-                    else textoGanador.text = "¡Empate técnico!";
+                    panelFinDePartida.SetActive(true);
+                    CalcularCartelFinalLocal();
                 }
             }
             else
             {
-                panelFinDePartida.SetActive(false);
-
-                // Si por alguna razón la partida se reinicia o des-pausa, volvemos a ocultar el texto
-                if (textoGanador != null)
+                // Si la partida se reinicia, apagamos el panel y los carteles
+                if (panelFinDePartida.activeSelf)
                 {
-                    textoGanador.gameObject.SetActive(false);
+                    panelFinDePartida.SetActive(false);
+                    DesactivarTodosLosCarteles();
                 }
             }
         }
+    }
+
+    // --- LÓGICA INDEPENDIENTE PARA HOST Y CLIENTE ---
+    private void CalcularCartelFinalLocal()
+    {
+        int ptsHost = GameManager.Instance.puntajeHost.Value;
+        int ptsCliente = GameManager.Instance.puntajeCliente.Value;
+
+        // 1. Caso de Empate Técnico (Es igual para ambos)
+        if (ptsHost == ptsCliente)
+        {
+            if (cartelEmpate != null) cartelEmpate.SetActive(true);
+            return;
+        }
+
+        // 2. Comprobamos quién soy yo en la red (Netcode)
+        bool soyElHost = Unity.Netcode.NetworkManager.Singleton.IsServer;
+
+        if (soyElHost)
+        {
+            // Lógica para la pantalla del HOST
+            if (ptsHost > ptsCliente)
+            {
+                if (cartelVictoria != null) cartelVictoria.SetActive(true);
+            }
+            else
+            {
+                if (cartelDerrota != null) cartelDerrota.SetActive(true);
+            }
+        }
+        else
+        {
+            // Lógica para la pantalla del CLIENTE
+            if (ptsCliente > ptsHost)
+            {
+                if (cartelVictoria != null) cartelVictoria.SetActive(true);
+            }
+            else
+            {
+                if (cartelDerrota != null) cartelDerrota.SetActive(true);
+            }
+        }
+    }
+
+    private void DesactivarTodosLosCarteles()
+    {
+        if (cartelVictoria != null) cartelVictoria.SetActive(false);
+        if (cartelDerrota != null) cartelDerrota.SetActive(false);
+        if (cartelEmpate != null) cartelEmpate.SetActive(false);
     }
 
     public void AlPresionarReiniciar()
