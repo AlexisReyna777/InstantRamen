@@ -30,6 +30,10 @@ public class GameManager : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        // --- NUEVO: Todos los clientes escuchan cuando los puntajes cambian ---
+        puntajeHost.OnValueChanged += AlCambiarPuntajeHost;
+        puntajeCliente.OnValueChanged += AlCambiarPuntajeCliente;
+
         if (IsServer)
         {
             // Al nacer el GameManager, seteamos todo en "espera"
@@ -51,11 +55,42 @@ public class GameManager : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
+        // --- NUEVO: Desuscripción de eventos de variables de red ---
+        puntajeHost.OnValueChanged -= AlCambiarPuntajeHost;
+        puntajeCliente.OnValueChanged -= AlCambiarPuntajeCliente;
+
         if (IsServer && NetworkManager.Singleton != null)
         {
             NetworkManager.Singleton.OnClientConnectedCallback -= AlConectarseUnCliente;
             NetworkManager.Singleton.OnClientDisconnectCallback -= AlDesconectarseUnCliente;
             NetworkManager.Singleton.SceneManager.OnLoadEventCompleted -= AlCompletarCargaDeEscena;
+        }
+    }
+
+    // --- NUEVAS FUNCIONES: Detectan cambios de puntos en red y actualizan escalas ---
+    private void AlCambiarPuntajeHost(int valorViejo, int valorNuevo)
+    {
+        ActualizarEscalaDeJugadorEnEscena(0, valorNuevo);
+    }
+
+    private void AlCambiarPuntajeCliente(int valorViejo, int valorNuevo)
+    {
+        // Buscamos cualquier ID que no sea 0 (el cliente)
+        ActualizarEscalaDeJugadorEnEscena(1, valorNuevo); 
+    }
+
+    private void ActualizarEscalaDeJugadorEnEscena(ulong targetClientId, int puntos)
+    {
+        // Buscamos los jugadores en la escena local de este cliente/host
+        PlayerMovement[] jugadores = FindObjectsByType<PlayerMovement>(FindObjectsSortMode.None);
+        foreach (PlayerMovement player in jugadores)
+        {
+            // Si el ID coincide (Host es 0, Cliente es mayor a 0)
+            if ((targetClientId == 0 && player.OwnerClientId == 0) || (targetClientId == 1 && player.OwnerClientId > 0))
+            {
+                player.ActualizarEscalaPorPuntaje(puntos);
+                break; // Ya encontramos al jugador que buscábamos
+            }
         }
     }
 
@@ -127,9 +162,6 @@ public class GameManager : NetworkBehaviour
 
                     Debug.Log($"[SERVIDOR] Solicitando teletransporte seguro al script del jugador ID {clientId} hacia el punto #{spawnIndex}");
 
-                    // ¡SOLUCIÓN!: Quitamos el NetworkTransform.Teleport directo del servidor.
-                    // Ahora llamamos exclusivamente al método seguro de tu PlayerMovement, que maneja
-                    // correctamente los RPCs y las restricciones de autoridad.
                     if (playerObject.TryGetComponent<PlayerMovement>(out var movimiento))
                     {
                         movimiento.TeletransportarASpawn(posicionSpawn, rotacionSpawn);
