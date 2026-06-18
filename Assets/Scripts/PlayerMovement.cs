@@ -20,6 +20,10 @@ public class PlayerMovement : NetworkBehaviour
     [SerializeField] private GameObject modeloHost;
     [SerializeField] private GameObject modeloCliente;
 
+    [Header("Efectos de Audio (¡NUEVO!)")]
+    [SerializeField] private AudioSource audioSourceComponente; // El componente que reproduce el sonido
+    [SerializeField] private AudioClip sonidoRecogerCaja; // El archivo de audio .wav o .mp3
+
     [Header("Avatars Específicos")]
     [SerializeField] private Avatar avatarHost;
     [SerializeField] private Avatar actorCliente; // Nota: Mantenido por si está mapeado en el Inspector
@@ -39,7 +43,7 @@ public class PlayerMovement : NetworkBehaviour
     // Lista local e independiente en cada cliente para actualizar la posición visual sin alterar la jerarquía de red
     private List<GameObject> cajasCargadasVisuales = new List<GameObject>();
 
-    // NUEVO MÉTODO: Permite a ZonaEntrega acceder a las referencias de las cajas para eliminarlas de la red
+    // NUEVO MÉTOPDO: Permite a ZonaEntrega acceder a las referencias de las cajas para eliminarlas de la red
     public List<GameObject> ObtenerCajasCargadas() 
     { 
         return cajasCargadasVisuales; 
@@ -192,6 +196,12 @@ public class PlayerMovement : NetworkBehaviour
         // 3. Incrementamos el contador en todas las pantallas para que la simulación de velocidad coincida
         colectablesActuales++;
         RecalcularVelocidad();
+
+        // MODIFICADO: Reproduce el sonido de recolección de forma local en la máquina del dueño
+        if (IsOwner && audioSourceComponente != null && sonidoRecogerCaja != null)
+        {
+            audioSourceComponente.PlayOneShot(sonidoRecogerCaja);
+        }
     }
 
     // Método que llama la Zona de Entrega a través del servidor
@@ -207,16 +217,28 @@ public class PlayerMovement : NetworkBehaviour
         if (rutinaTamano != null)
         {
             StopCoroutine(rutinaTamano);
-            transform.localScale = Vector3.one;
-            esDiminuto = false;
             rutinaTamano = null;
         }
 
-        // CORREGIDO: Todos los clientes limpian las cajas visuales de sus mundos
+        esDiminuto = false;
+
+        // Todos los clientes limpian las cajas visuales de sus mundos
         cajasCargadasVisuales.Clear();
 
-        // CORREGIDO: Se removió el candado IsOwner para que todos los clientes pongan a cero este personaje específico
+        // Se removió el candado IsOwner para que todos los clientes pongan a cero este personaje específico
         colectablesActuales = 0; 
+        
+        // En lugar de volver a Vector3.one plano, recalculamos su tamaño en base a los puntos ganados
+        if (GameManager.Instance != null)
+        {
+            int puntosDeEsteJugador = (OwnerClientId == 0) ? GameManager.Instance.puntajeHost.Value : GameManager.Instance.puntajeCliente.Value;
+            ActualizarEscalaPorPuntaje(puntosDeEsteJugador);
+        }
+        else
+        {
+            transform.localScale = Vector3.one;
+        }
+
         RecalcularVelocidad();
         
         Debug.Log($"[Netcode] Peso y velocidad restablecidos en el cliente para el jugador ID: {OwnerClientId}");
@@ -230,7 +252,7 @@ public class PlayerMovement : NetworkBehaviour
         // Protegemos que no sea inferior a la velocidad mínima para que el player se mueva
         velocidadModificada = Mathf.Max(calculoNuevaVelocidad, velocidadMinima);
 
-        // --- NUEVO: SI ES DIMINUTO, APLICAMOS UN BONUS DE VELOCIDAD RAPIDÍSIMA ---
+        // --- SI ES DIMINUTO, APLICAMOS UN BONUS DE VELOCIDAD RAPIDÍSIMA ---
         if (esDiminuto)
         {
             velocidadModificada *= multiplicadorVelocidadChiquito;
@@ -245,7 +267,7 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (IsServer)
         {
-            // NUEVO: El servidor fuerza de inmediato el reseteo de peso al reiniciar/teletransportar
+            // El servidor fuerza de inmediato el reseteo de peso al reiniciar/teletransportar
             LimpiarPesoClientRpc();
 
             NetworkTransform netTransform = GetComponent<NetworkTransform>();
@@ -297,7 +319,8 @@ public class PlayerMovement : NetworkBehaviour
 
     private IEnumerator RutinaInvertirControles(float duracion)
     {
-        controlesInvertidos = true;
+        // Modificación segura para evitar errores si no eres el dueño
+        if (IsOwner) controlesInvertidos = true;
         Debug.LogWarning($"[MALDICIÓN] ¡Controles invertidos para el jugador {OwnerClientId}!");
 
         yield return new WaitForSeconds(duracion);
@@ -328,13 +351,37 @@ public class PlayerMovement : NetworkBehaviour
 
         yield return new WaitForSeconds(duracion);
 
-        // Volvemos a la normalidad
-        transform.localScale = Vector3.one;
         esDiminuto = false;
+        
+        // Al terminar el efecto de encogimiento, lee sus puntos actuales en lugar de volver a 1.0 plano
+        if (GameManager.Instance != null)
+        {
+            int puntosDeEsteJugador = (OwnerClientId == 0) ? GameManager.Instance.puntajeHost.Value : GameManager.Instance.puntajeCliente.Value;
+            ActualizarEscalaPorPuntaje(puntosDeEsteJugador);
+        }
+        else
+        {
+            transform.localScale = Vector3.one;
+        }
         
         RecalcularVelocidad();
         
         Debug.Log($"[MUTACIÓN] Jugador {OwnerClientId} regresó a su tamaño normal.");
         rutinaTamano = null;
+    }
+
+    // --- Cambiar tamaño dinámico por puntaje (Ajustado a crecimiento lento) ---
+    public void ActualizarEscalaPorPuntaje(int puntosActuales)
+    {
+        // AJUSTADO: Crecimiento lento (0.04f por punto ganado)
+        float nuevoFactor = 1.0f + (puntosActuales * 0.04f); 
+        
+        // AJUSTADO: Límite máximo establecido en 2.5f (dos veces y media su tamaño original)
+        nuevoFactor = Mathf.Clamp(nuevoFactor, 1.0f, 2.5f); 
+
+        if (!esDiminuto)
+        {
+            transform.localScale = Vector3.one * nuevoFactor;
+        }
     }
 }
