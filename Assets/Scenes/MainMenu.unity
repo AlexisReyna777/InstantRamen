@@ -194,7 +194,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -218, y: -73}
+  m_AnchoredPosition: {x: -91, y: -60}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &373208260
@@ -251,7 +251,7 @@ MonoBehaviour:
   m_fontSizeMin: 18
   m_fontSizeMax: 72
   m_fontStyle: 33
-  m_HorizontalAlignment: 1
+  m_HorizontalAlignment: 16
   m_VerticalAlignment: 256
   m_textAlignment: 65535
   m_characterSpacing: 0
@@ -283,7 +283,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: 0, y: 0, z: -470.2736, w: 0}
+  m_margin: {x: 0, y: 0, z: -177.85468, w: 0}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -1352,7 +1352,7 @@ Camera:
   far clip plane: 398
   field of view: 60
   orthographic: 1
-  orthographic size: 5
+  orthographic size: 8
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -2433,15 +2433,16 @@ MonoBehaviour:
   - {fileID: 8086926364327681447, guid: 5396ecd4ac6dbcf479f78eb137964a7f, type: 3}
   - {fileID: 9107362780493626130, guid: 80026b56ceacd8c448da26492b443d3e, type: 3}
   - {fileID: 3917932018992599244, guid: 4af39a7e57cf9fb4b9b5bb83e45b97a6, type: 3}
-  cantidadObjetos: 60
-  escalaMultiplicadora: 120
-  distanciaDelCentroX: 6.5
-  anchoPilarX: 2
-  rangoZ: -6
+  cantidadObjetos: 50
+  escalaMinima: 60
+  escalaMaxima: 300
+  distanciaDelCentroX: 10
+  anchoPilarX: 3
+  rangoZ: -3
   limiteSuperiorY: 15
   limiteInferiorY: -15
-  velocidadMinima: 2
-  velocidadMaxima: 2
+  velocidadMinima: 4
+  velocidadMaxima: 9
 --- !u!4 &1471080282
 Transform:
   m_ObjectHideFlags: 0
@@ -2970,7 +2971,7 @@ Canvas:
   serializedVersion: 3
   m_RenderMode: 1
   m_Camera: {fileID: 1156941387}
-  m_PlaneDistance: 15
+  m_PlaneDistance: 23
   m_PixelPerfect: 0
   m_ReceivesEvents: 1
   m_OverrideSorting: 0

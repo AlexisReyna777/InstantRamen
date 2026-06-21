@@ -4,7 +4,6 @@ public class ObjetoCaidaMenu : MonoBehaviour
 {
     private float supY;
     private float infY;
-    private float rZ;
     private float velocidadCaida;
     private Vector3 velocidadRotacion;
     
@@ -15,10 +14,10 @@ public class ObjetoCaidaMenu : MonoBehaviour
     {
         supY = superiorY;
         infY = inferiorY;
-        rZ = rangoZ;
         velocidadCaida = velocidad;
 
-        velocidadRotacion = new Vector3(Random.Range(10, 50), Random.Range(10, 50), Random.Range(10, 50));
+        // Modificado: Rotaciones un poco más suaves para simular el vaivén del viento
+        velocidadRotacion = new Vector3(Random.Range(15, 45), Random.Range(15, 45), Random.Range(15, 45));
     }
 
     public void FijarLadoPilar(float xPos)
@@ -29,22 +28,21 @@ public class ObjetoCaidaMenu : MonoBehaviour
 
     private void Update()
     {
-        // 1. Desplazar hacia abajo
-        transform.Translate(Vector3.down * velocidadCaida * Time.deltaTime, Space.World);
+        // 1. CAÍDA ABSOLUTA: Forzamos al objeto a ir hacia abajo de forma recta en el mundo entero
+        transform.position += Vector3.down * velocidadCaida * Time.deltaTime;
 
-        // 2. Rotar
-        transform.Rotate(velocidadRotacion * Time.deltaTime);
+        // 2. ROTACIÓN PURA: Rotamos usando Space.World para que el giro no afecte la dirección de la caída
+        transform.Rotate(velocidadRotacion * Time.deltaTime, Space.World);
 
-        // 3. El Bucle corregido para mantener los pilares laterales
+        // 3. El Bucle (Respawn arriba)
         if (transform.position.y < infY)
         {
-            // Mantenemos la posición X que le corresponde a su pilar
             float nuevaX = usaPilarFijo ? xFijaPilar : transform.position.x;
 
             transform.position = new Vector3(
                 nuevaX,
                 supY,
-                transform.position.z // Mantiene su profundidad actual
+                transform.position.z
             );
             
             transform.rotation = Random.rotation;

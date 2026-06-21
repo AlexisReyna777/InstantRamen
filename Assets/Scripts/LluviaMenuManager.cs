@@ -3,17 +3,23 @@ using UnityEngine;
 public class LluviaMenuManager : MonoBehaviour
 {
     [Header("Configuración de Objetos")]
+    [Tooltip("El o los prefabs 3D que van a caer (pueden ser cubos, esferas, cápsulas, etc.)")]
     [SerializeField] private GameObject[] prefabsObjetos;
+    [Tooltip("Cantidad de objetos cayendo al mismo tiempo en pantalla")]
     [SerializeField] private int cantidadObjetos = 30;
-    [Tooltip("Multiplicador de tamaño si tus assets vienen muy chicos.")]
-    [SerializeField] private float escalaMultiplicadora = 10f; 
+    
+    [Header("Variedad de Tamaños")]
+    [Tooltip("Multiplicador MÍNIMO de tamaño para los objetos.")]
+    [SerializeField] private float escalaMinima = 5f; 
+    [Tooltip("Multiplicador MÁXIMO de tamaño para los objetos.")]
+    [SerializeField] private float escalaMaxima = 15f; 
 
     [Header("Configuración de los Pilares")]
-    [Tooltip("Qué tan lejos del centro (X=0) se generarán los pilares. Aumenta este valor para alejarlos más hacia los bordes.")]
+    [Tooltip("Qué tan lejos del centro (X=0) se generarán los pilares. Sube este valor para alejarlos a los bordes.")]
     [SerializeField] private float distanciaDelCentroX = 12f;
-    [Tooltip("El ancho o grosor de cada pilar individual.")]
+    [Tooltip("El ancho o grosor horizontal de cada pilar individual.")]
     [SerializeField] private float anchoPilarX = 3f;
-    [Tooltip("El grosor en profundidad (Z) del pilar.")]
+    [Tooltip("El grosor en profundidad (Z) del pilar para dar efecto 3D.")]
     [SerializeField] private float rangoZ = 2f;
 
     [Header("Límites de Caída (Y)")]
@@ -26,44 +32,57 @@ public class LluviaMenuManager : MonoBehaviour
 
     private void Start()
     {
-        if (prefabsObjetos == null || prefabsObjetos.Length == 0) return;
+        if (prefabsObjetos == null || prefabsObjetos.Length == 0)
+        {
+            Debug.LogError("¡Falta asignar los prefabs de los objetos en el LluviaMenuManager!");
+            return;
+        }
 
-        Vector3 posCamara = Camera.main != null ? Camera.main.transform.position : Vector3.zero;
+        // Usamos la posición del propio objeto GestorLluvia como centro fijo independiente de la cámara
+        Vector3 centroFijo = transform.position;
 
         for (int i = 0; i < cantidadObjetos; i++)
         {
+            // Elegimos un prefab aleatorio
             GameObject prefabElegido = prefabsObjetos[Random.Range(0, prefabsObjetos.Length)];
             
-            // Decidimos si este objeto va al pilar izquierdo (true) o al derecho (false)
+            // Alternamos: un objeto va al pilar izquierdo y el siguiente al derecho
             bool esPilarIzquierdo = (i % 2 == 0);
             
-            // Calculamos la posición X base según el lado elegido
+            // Calculamos la coordenada X según el pilar correspondiente
             float xBase = esPilarIzquierdo ? -distanciaDelCentroX : distanciaDelCentroX;
-            // Le sumamos una pequeña variación aleatoria dentro del grosor de su propio pilar
-            float coordenadaX = posCamara.x + xBase + Random.Range(-anchoPilarX * 0.5f, anchoPilarX * 0.5f);
+            float coordenadaX = centroFijo.x + xBase + Random.Range(-anchoPilarX * 0.5f, anchoPilarX * 0.5f);
 
+            // Calculamos la profundidad Z relativa al centro del Gestor
+            float coordenadaZ = centroFijo.z + Random.Range(-rangoZ * 0.5f, rangoZ * 0.5f);
+
+            // Posición final combinada
             Vector3 posicionAleatoria = new Vector3(
                 coordenadaX,
-                posCamara.y + Random.Range(limiteInferiorY, limiteSuperiorY),
-                posCamara.z + 5f // Caen a 5 metros frente a la cámara
+                centroFijo.y + Random.Range(limiteInferiorY, limiteSuperiorY),
+                coordenadaZ
             );
 
+            // Creamos el clon
             GameObject nuevoObjeto = Instantiate(prefabElegido, posicionAleatoria, Random.rotation);
             
-            nuevoObjeto.transform.localScale = prefabElegido.transform.localScale * escalaMultiplicadora;
+            // Aplicamos la variación de tamaño aleatorio entre el mínimo y máximo configurados
+            float multiplicadorAleatorio = Random.Range(escalaMinima, escalaMaxima);
+            nuevoObjeto.transform.localScale = prefabElegido.transform.localScale * multiplicadorAleatorio;
             
+            // Le inyectamos el script de caída individual
             ObjetoCaidaMenu componenteCaida = nuevoObjeto.AddComponent<ObjetoCaidaMenu>();
             
-            // Configuramos el comportamiento pasándole los datos necesarios
+            // Lo configuramos pasándole las dimensiones del pilar
             componenteCaida.Configurar(
-                posCamara.y + limiteSuperiorY, 
-                posCamara.y + limiteInferiorY, 
+                centroFijo.y + limiteSuperiorY, 
+                centroFijo.y + limiteInferiorY, 
                 anchoPilarX, 
                 rangoZ, 
                 Random.Range(velocidadMinima, velocidadMaxima)
             );
 
-            // Modificación interna para que cuando el objeto buclee (respawnee arriba), mantenga su lógica de pilar fijo
+            // Bloqueamos su coordenada X para que al reaparecer arriba no se cruce de pilar
             componenteCaida.FijarLadoPilar(coordenadaX);
         }
     }
