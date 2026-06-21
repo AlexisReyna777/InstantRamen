@@ -46,12 +46,15 @@ public class TresEnRayaNetcode : NetworkBehaviour
 
     public void IntentarMarcarCasilla(int indiceCasilla)
     {
-        MarcarCasillaServerRpc(indiceCasilla);
+        // Llamamos al nuevo método RPC
+        MarcarCasillaRpc(indiceCasilla);
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    private void MarcarCasillaServerRpc(int indiceCasilla, ServerRpcParams rpcParams = default)
+    // MODIFICADO: Nueva sintaxis oficial de Netcode que reemplaza al ServerRpc obsoleto
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void MarcarCasillaRpc(int indiceCasilla, RpcParams rpcParams = default)
     {
+        // Obtenemos el ID del emisor desde las propiedades del RpcParams
         ulong idJugadorQuePresiono = rpcParams.Receive.SenderClientId;
 
         if (estadoTablero[indiceCasilla] != 0) return;
