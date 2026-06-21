@@ -1,32 +1,41 @@
 using UnityEngine;
 using Unity.Netcode;
-using Unity.Netcode.Components; // IMPORTANTE: Necesario para detectar el NetworkTransform
+using Unity.Netcode.Components;
 using System.Collections;
-using System.Collections.Generic; // REQUERIDO: Para usar listas genéricas de C#
+using System.Collections.Generic;
 
 public class PlayerMovement : NetworkBehaviour
 {
     [Header("Configuración de Movimiento")]
-    [SerializeField] private float speed = 5f; // Funciona como tu velocidad máxima base
+    [SerializeField] private float speed = 5f; 
     
     [Header("Mecánica de Peso y Apilamiento")]
-    [SerializeField] private Transform puntoAnclajeCajas; // Un objeto vacío en la espalda/cabeza del player
-    [SerializeField] private Vector3 dimensionesCaja = new Vector3(0f, 0.5f, 0f); // Cuánto mide de alto la caja para sumar en el eje Y
+    [SerializeField] private Transform puntoAnclajeCajas; 
+    [SerializeField] private Vector3 dimensionesCaja = new Vector3(0f, 0.5f, 0f); 
     [SerializeField] private Vector3 rotacionCajaApilada = new Vector3(0f, 90f, 0f);
-    [SerializeField] private float penalizacionPorObjeto = 0.5f; // Cuánto frena cada caja encima
-    [SerializeField] private float velocidadMinima = 1.5f; // Límite para no quedarse totalmente quieto
+    [SerializeField] private float penalizacionPorObjeto = 0.5f; 
+    [SerializeField] private float velocidadMinima = 1.5f; 
+
+    [Header("Mecánica de Tacleo / Dash")]
+    [SerializeField] private float fuerzaDash = 25f;
+    [SerializeField] private float duracionDash = 0.25f;
+    [SerializeField] private float cooldownDash = 1.5f;
+    [SerializeField] private float duracionStun = 1.2f;
+    [SerializeField] private float fuerzaEmpujonRecibido = 10f;
+    [Tooltip("Multiplicador de fuerza cuando el jugador con MENOS puntos taclea al líder de la partida")]
+    [SerializeField] private float multiplicadorEmpujonDesventaja = 0.35f; 
 
     [Header("Modelos Visuales")]
     [SerializeField] private GameObject modeloHost;
     [SerializeField] private GameObject modeloCliente;
 
-    [Header("Efectos de Audio (¡NUEVO!)")]
-    [SerializeField] private AudioSource audioSourceComponente; // El componente que reproduce el sonido
-    [SerializeField] private AudioClip sonidoRecogerCaja; // El archivo de audio .wav o .mp3
+    [Header("Efectos de Audio")]
+    [SerializeField] private AudioSource audioSourceComponente; 
+    [SerializeField] private AudioClip sonidoRecogerCaja; 
 
     [Header("Avatars Específicos")]
     [SerializeField] private Avatar avatarHost;
-    [SerializeField] private Avatar actorCliente; // Nota: Mantenido por si está mapeado en el Inspector
+    [SerializeField] private Avatar actorCliente; 
     [SerializeField] private Avatar avatarCliente;
     
     private bool controlesInvertidos = false;
@@ -36,14 +45,25 @@ public class PlayerMovement : NetworkBehaviour
     private Coroutine rutinaTamano;
     [SerializeField] private float multiplicadorVelocidadChiquito = 1.35f;
 
-    // MODIFICADO: Ahora es una propiedad pública con 'private set' para que ZonaEntrega lea las cajas actuales
+    private bool estaDasheando = false;
+    private bool estaAturdido = false;
+    private float tiempoSiguienteDash = 0f;
+
     public int colectablesActuales { get; private set; } = 0;
     private float velocidadModificada;
-
-    // Lista local e independiente en cada cliente para actualizar la posición visual sin alterar la jerarquía de red
     private List<GameObject> cajasCargadasVisuales = new List<GameObject>();
 
-    // NUEVO MÉTOPDO: Permite a ZonaEntrega acceder a las referencias de las cajas para eliminarlas de la red
+    // PROPIEDAD PÚBLICA: Devuelve un valor de 0 a 1 que indica la disponibilidad del Dash
+    public float PorcentajeCooldownDash
+    {
+        get
+        {
+            if (Time.time >= tiempoSiguienteDash) return 1f;
+            float tiempoRestante = tiempoSiguienteDash - Time.time;
+            return 1f - (tiempoRestante / cooldownDash);
+        }
+    }
+
     public List<GameObject> ObtenerCajasCargadas() 
     { 
         return cajasCargadasVisuales; 
@@ -52,7 +72,7 @@ public class PlayerMovement : NetworkBehaviour
     private void Awake()
     {
         miAnimator = GetComponent<Animator>();
-        velocidadModificada = speed; // Al inicio arranca al 100% de la velocidad base
+        velocidadModificada = speed; 
     }
 
     public override void OnNetworkSpawn()
@@ -73,13 +93,13 @@ public class PlayerMovement : NetworkBehaviour
     {
         if (miAnimator == null) miAnimator = GetComponent<Animator>();
 
-        if (OwnerClientId == 0) // El Host
+        if (OwnerClientId == 0) 
         {
             if (modeloHost != null) modeloHost.SetActive(true);
             if (modeloCliente != null) modeloCliente.SetActive(false);
             if (miAnimator != null && avatarHost != null) miAnimator.avatar = avatarHost;
         }
-        else // El Cliente
+        else 
         {
             if (modeloHost != null) modeloHost.SetActive(false);
             if (modeloCliente != null) modeloCliente.SetActive(true);
@@ -90,7 +110,15 @@ public class PlayerMovement : NetworkBehaviour
     void Update()
     {
         if (!IsOwner) return;
+
         if (GameManager.Instance != null && !GameManager.Instance.partidaIniciada.Value) return;
+        if (estaAturdido || estaDasheando) return;
+
+        if (Input.GetKeyDown(KeyCode.Space) && Time.time >= tiempoSiguienteDash)
+        {
+            StartCoroutine(RutinaDashLocal());
+            tiempoSiguienteDash = Time.time + cooldownDash;
+        }
 
         float temporalX = Input.GetAxisRaw("Horizontal");
         float temporalZ = Input.GetAxisRaw("Vertical");
@@ -118,7 +146,6 @@ public class PlayerMovement : NetworkBehaviour
         Vector3 move = new Vector3(inputX, 0f, inputZ);
         float velocidadActual = move.magnitude;
 
-        // ANIMACIÓN CONTROLADA POR RED MANUAL
         if (miAnimator != null)
         {
             miAnimator.SetFloat("Velocidad", velocidadActual);
@@ -134,28 +161,19 @@ public class PlayerMovement : NetworkBehaviour
                 transform.rotation = rotacionObjetivo;
             }
             
-            // Multiplica por velocidadModificada, aplicando el peso dinámico
             transform.position += move * velocidadModificada * Time.deltaTime;
         }
     }
 
-    // Se ejecuta después del Update para evitar desfases o temblores visuales (jittering) al caminar
     private void LateUpdate()
     {
         if (puntoAnclajeCajas == null || cajasCargadasVisuales.Count == 0) return;
 
-        // Cada frame, posicionamos y rotamos visualmente las cajas sobre el punto de anclaje de forma manual
         for (int i = 0; i < cajasCargadasVisuales.Count; i++)
         {
             if (cajasCargadasVisuales[i] == null) continue;
-
-            // Calculamos el desplazamiento vertical acumulado por cada piso de cajas
             Vector3 desfaceAltura = dimensionesCaja * i;
-
-            // Posición en el mundo = posición del anclaje + desplazamiento rotado según la orientación del jugador
             cajasCargadasVisuales[i].transform.position = puntoAnclajeCajas.position + (puntoAnclajeCajas.rotation * desfaceAltura);
-            
-            // Rotación fija combinando el giro del jugador con la inclinación deseada (ej: acostada)
             cajasCargadasVisuales[i].transform.rotation = puntoAnclajeCajas.rotation * Quaternion.Euler(rotacionCajaApilada);
         }
     }
@@ -170,41 +188,129 @@ public class PlayerMovement : NetworkBehaviour
     private void SincronizarAnimacionClientRpc(float velocidad)
     {
         if (IsOwner) return;
+        if (miAnimator != null) miAnimator.SetFloat("Velocidad", velocidad);
+    }
 
-        if (miAnimator != null)
+    private IEnumerator RutinaDashLocal()
+    {
+        estaDasheando = true;
+
+        if (TryGetComponent<Rigidbody>(out Rigidbody rb))
         {
-            miAnimator.SetFloat("Velocidad", velocidad);
+            rb.linearVelocity = transform.forward * fuerzaDash;
+        }
+        else
+        {
+            float tiempoAsentamiento = 0f;
+            while (tiempoAsentamiento < duracionDash)
+            {
+                transform.position += transform.forward * fuerzaDash * Time.deltaTime;
+                tiempoAsentamiento += Time.deltaTime;
+                yield return null;
+            }
+        }
+
+        yield return new WaitForSeconds(duracionDash);
+
+        if (TryGetComponent<Rigidbody>(out Rigidbody rbFreno))
+        {
+            rbFreno.linearVelocity = Vector3.zero;
+        }
+
+        estaDasheando = false;
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (!IsOwner || !estaDasheando) return;
+
+        if (collision.gameObject.TryGetComponent<PlayerMovement>(out var rival))
+        {
+            SolicitarTacleoServerRpc(rival.NetworkObjectId, transform.forward);
         }
     }
 
-    // --- SISTEMA DE PESO, REDUCCIÓN Y LIMPIEZA ---
+    [ServerRpc]
+    private void SolicitarTacleoServerRpc(ulong rivalNetworkObjectId, Vector3 direccionAtaque)
+    {
+        if (GameManager.Instance == null) return;
+
+        if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(rivalNetworkObjectId, out var netObj))
+        {
+            if (netObj.TryGetComponent<PlayerMovement>(out var scriptRival))
+            {
+                int puntosAtacante = (this.OwnerClientId == 0) ? GameManager.Instance.puntajeHost.Value : GameManager.Instance.puntajeCliente.Value;
+                int puntosRival = (scriptRival.OwnerClientId == 0) ? GameManager.Instance.puntajeHost.Value : GameManager.Instance.puntajeCliente.Value;
+
+                Vector3 direccionEmpujon = direccionAtaque;
+                direccionEmpujon.y = 0;
+
+                float modificadorFuerzaFinal = 1.0f;
+                if (puntosAtacante <= puntosRival)
+                {
+                    modificadorFuerzaFinal = multiplicadorEmpujonDesventaja;
+                }
+
+                scriptRival.RecibirTacleoClientRpc(direccionEmpujon.normalized, modificadorFuerzaFinal);
+            }
+        }
+    }
+
+    [ClientRpc]
+    public void RecibirTacleoClientRpc(Vector3 direccionEmpujon, float multiplicadorFuerza)
+    {
+        if (estaAturdido) return;
+        StartCoroutine(RutinaAturdimiento(direccionEmpujon, multiplicadorFuerza));
+    }
+
+    private IEnumerator RutinaAturdimiento(Vector3 direccionEmpujon, float multiplicadorFuerza)
+    {
+        estaAturdido = true;
+        if (miAnimator != null) miAnimator.SetFloat("Velocidad", 0f);
+
+        float fuerzaCalculada = fuerzaEmpujonRecibido * multiplicadorFuerza;
+
+        if (TryGetComponent<Rigidbody>(out Rigidbody rb))
+        {
+            rb.linearVelocity = Vector3.zero; 
+            rb.AddForce(direccionEmpujon * fuerzaCalculada, ForceMode.Impulse);
+        }
+        else
+        {
+            transform.position += direccionEmpujon * (fuerzaCalculada * 0.15f);
+        }
+
+        yield return new WaitForSeconds(duracionStun);
+
+        if (TryGetComponent<Rigidbody>(out Rigidbody rbFreno))
+        {
+            rbFreno.linearVelocity = Vector3.zero;
+        }
+
+        estaAturdido = false;
+    }
 
     public void RecogerColectable(GameObject objetoCaja)
     {
-        // 1. Desactivamos el efecto flotante/giratorio de la caja localmente
         if (objetoCaja.TryGetComponent<EfectoColectable>(out var efecto))
         {
             efecto.DesactivarEfectoYRotar(Quaternion.Euler(rotacionCajaApilada));
         }
 
-        // 2. Registramos la caja en la lista del LateUpdate para su seguimiento visual continuo
         if (!cajasCargadasVisuales.Contains(objetoCaja))
         {
             cajasCargadasVisuales.Add(objetoCaja);
         }
 
-        // 3. Incrementamos el contador en todas las pantallas para que la simulación de velocidad coincida
         colectablesActuales++;
         RecalcularVelocidad();
 
-        // MODIFICADO: Reproduce el sonido de recolección de forma local en la máquina del dueño
         if (IsOwner && audioSourceComponente != null && sonidoRecogerCaja != null)
         {
             audioSourceComponente.PlayOneShot(sonidoRecogerCaja);
         }
     }
 
-    // Método que llama la Zona de Entrega a través del servidor
     public void EntregarColectablesDesdeServidor()
     {
         if (!IsServer) return;
@@ -221,14 +327,9 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         esDiminuto = false;
-
-        // Todos los clientes limpian las cajas visuales de sus mundos
         cajasCargadasVisuales.Clear();
-
-        // Se removió el candado IsOwner para que todos los clientes pongan a cero este personaje específico
         colectablesActuales = 0; 
         
-        // En lugar de volver a Vector3.one plano, recalculamos su tamaño en base a los puntos ganados
         if (GameManager.Instance != null)
         {
             int puntosDeEsteJugador = (OwnerClientId == 0) ? GameManager.Instance.puntajeHost.Value : GameManager.Instance.puntajeCliente.Value;
@@ -240,36 +341,24 @@ public class PlayerMovement : NetworkBehaviour
         }
 
         RecalcularVelocidad();
-        
-        Debug.Log($"[Netcode] Peso y velocidad restablecidos en el cliente para el jugador ID: {OwnerClientId}");
     }
 
     private void RecalcularVelocidad()
     {
-        // Restamos el peso acumulado de la velocidad máxima original (speed)
         float calculoNuevaVelocidad = speed - (colectablesActuales * penalizacionPorObjeto);
-        
-        // Protegemos que no sea inferior a la velocidad mínima para que el player se mueva
         velocidadModificada = Mathf.Max(calculoNuevaVelocidad, velocidadMinima);
 
-        // --- SI ES DIMINUTO, APLICAMOS UN BONUS DE VELOCIDAD RAPIDÍSIMA ---
         if (esDiminuto)
         {
             velocidadModificada *= multiplicadorVelocidadChiquito;
         }
-
-        Debug.Log($"[PESO LOG] Player ID: {OwnerClientId} | Cajas: {colectablesActuales} | Velocidad resultante: {velocidadModificada}m/s");
     }
-
-    // --- CORRECCIÓN DEL TELETRANSPORTE PARA EVITAR EXCEPCIONES DE AUTORIDAD ---
 
     public void TeletransportarASpawn(Vector3 nuevaPosicion, Quaternion nuevaRotacion)
     {
         if (IsServer)
         {
-            // El servidor fuerza de inmediato el reseteo de peso al reiniciar/teletransportar
             LimpiarPesoClientRpc();
-
             NetworkTransform netTransform = GetComponent<NetworkTransform>();
             
             if (netTransform != null && netTransform.CanCommitToTransform)
@@ -292,7 +381,6 @@ public class PlayerMovement : NetworkBehaviour
         if (IsServer) return;
 
         NetworkTransform netTransform = GetComponent<NetworkTransform>();
-        
         if (netTransform != null)
         {
             netTransform.enabled = false;
@@ -305,34 +393,24 @@ public class PlayerMovement : NetworkBehaviour
             transform.position = pos;
             transform.rotation = rot;
         }
-        
-        Debug.Log($"[Netcode] Posición de reinicio sincronizada en el cliente de forma segura: {pos}");
     }
 
     public void AplicarEfectoInversion(float duracion)
     {
-        // Si ya estábamos invertidos, detenemos la cuenta atrás anterior para iniciar una nueva limpia
         if (rutinaInversion != null) StopCoroutine(rutinaInversion);
-        
         rutinaInversion = StartCoroutine(RutinaInvertirControles(duracion));
     }
 
     private IEnumerator RutinaInvertirControles(float duracion)
     {
-        // Modificación segura para evitar errores si no eres el dueño
         if (IsOwner) controlesInvertidos = true;
-        Debug.LogWarning($"[MALDICIÓN] ¡Controles invertidos para el jugador {OwnerClientId}!");
-
         yield return new WaitForSeconds(duracion);
-
         controlesInvertidos = false;
-        Debug.Log($"[MALDICIÓN] Controles restaurados para el jugador {OwnerClientId}.");
         rutinaInversion = null;
     }
 
     public void AplicarEfectoEncoger(float duracion)
     {
-        // Si ya éramos chiquitos, reiniciamos el temporizador
         if (rutinaTamano != null) StopCoroutine(rutinaTamano);
         rutinaTamano = StartCoroutine(RutinaEncogerPersonaje(duracion));
     }
@@ -340,20 +418,12 @@ public class PlayerMovement : NetworkBehaviour
     private IEnumerator RutinaEncogerPersonaje(float duracion)
     {
         esDiminuto = true;
-        
-        // Encogemos el personaje al 30% de su tamaño original
         transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);
-        
-        // Al encogerse, recalculamos la velocidad para aplicar el buf de velocidad extra
         RecalcularVelocidad();
-        
-        Debug.LogWarning($"[MUTACIÓN] ¡Jugador {OwnerClientId} se ha encogido!");
 
         yield return new WaitForSeconds(duracion);
 
         esDiminuto = false;
-        
-        // Al terminar el efecto de encogimiento, lee sus puntos actuales en lugar de volver a 1.0 plano
         if (GameManager.Instance != null)
         {
             int puntosDeEsteJugador = (OwnerClientId == 0) ? GameManager.Instance.puntajeHost.Value : GameManager.Instance.puntajeCliente.Value;
@@ -365,18 +435,12 @@ public class PlayerMovement : NetworkBehaviour
         }
         
         RecalcularVelocidad();
-        
-        Debug.Log($"[MUTACIÓN] Jugador {OwnerClientId} regresó a su tamaño normal.");
         rutinaTamano = null;
     }
 
-    // --- Cambiar tamaño dinámico por puntaje (Ajustado a crecimiento lento) ---
     public void ActualizarEscalaPorPuntaje(int puntosActuales)
     {
-        // AJUSTADO: Crecimiento lento (0.04f por punto ganado)
         float nuevoFactor = 1.0f + (puntosActuales * 0.04f); 
-        
-        // AJUSTADO: Límite máximo establecido en 2.5f (dos veces y media su tamaño original)
         nuevoFactor = Mathf.Clamp(nuevoFactor, 1.0f, 2.5f); 
 
         if (!esDiminuto)

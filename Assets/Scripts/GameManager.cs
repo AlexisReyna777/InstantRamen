@@ -15,12 +15,24 @@ public class GameManager : NetworkBehaviour
     [Header("Puntos de Spawn")]
     [SerializeField] private List<Transform> puntosDeSpawn;
 
+    [Header("UI Cuenta Regresiva (NUEVO)")]
+    [Tooltip("El componente Image de la UI que renderizará los números/GO")]
+    [SerializeField] private Image imagenContadorUI;
+    [Tooltip("Sprites en orden: Element 0 = Nulo, Element 1 = Sprite '1', Element 2 = Sprite '2', Element 3 = Sprite '3', Element 4 = Sprite 'GO'")]
+    [SerializeField] private Sprite[] spritesContador = new Sprite[5];
+
     // Variables de Red
     public NetworkVariable<int> puntajeHost = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<int> puntajeCliente = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<float> tiempoRestante = new NetworkVariable<float>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<bool> juegoTerminado = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     public NetworkVariable<bool> partidaIniciada = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    
+    // NUEVO: Sincroniza qué imagen debe renderizarse en todos los clientes (0 = apagado, 1=1, 2=2, 3=3, 4=GO)
+    private NetworkVariable<int> indiceImagenContadorNet = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    
+    // Bandera para evitar disparar la corrutina de inicio múltiples veces seguidas
+    private bool cuentaRegresivaEnCurso = false;
 
     private void Awake()
     {
@@ -30,34 +42,36 @@ public class GameManager : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        // --- NUEVO: Todos los clientes escuchan cuando los puntajes cambian ---
         puntajeHost.OnValueChanged += AlCambiarPuntajeHost;
         puntajeCliente.OnValueChanged += AlCambiarPuntajeCliente;
+        
+        // NUEVO: Todos los clientes escuchan cuando cambia el índice para alternar las imágenes
+        indiceImagenContadorNet.OnValueChanged += AlCambiarIndiceContador;
+        ActualizarImagenUI(indiceImagenContadorNet.Value);
 
         if (IsServer)
         {
-            // Al nacer el GameManager, seteamos todo en "espera"
             tiempoRestante.Value = tiempoInicialPartida;
             juegoTerminado.Value = false;
             partidaIniciada.Value = false; 
             puntajeHost.Value = 0;
             puntajeCliente.Value = 0;
+            indiceImagenContadorNet.Value = 0;
+            cuentaRegresivaEnCurso = false;
 
-            // Nos suscribimos a los eventos de Netcode para saber cuando entra o sale un player
             NetworkManager.Singleton.OnClientConnectedCallback += AlConectarseUnCliente;
             NetworkManager.Singleton.OnClientDisconnectCallback += AlDesconectarseUnCliente;
             NetworkManager.Singleton.SceneManager.OnLoadEventCompleted += AlCompletarCargaDeEscena;
 
-            // Chequeo rápido por si el Host entró antes de que este script se suscribiera
             VerificarInicioDePartida();
         }
     }
 
     public override void OnNetworkDespawn()
     {
-        // --- NUEVO: Desuscripción de eventos de variables de red ---
         puntajeHost.OnValueChanged -= AlCambiarPuntajeHost;
         puntajeCliente.OnValueChanged -= AlCambiarPuntajeCliente;
+        indiceImagenContadorNet.OnValueChanged -= AlCambiarIndiceContador;
 
         if (IsServer && NetworkManager.Singleton != null)
         {
@@ -67,7 +81,27 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    // --- NUEVAS FUNCIONES: Detectan cambios de puntos en red y actualizan escalas ---
+    // --- NUEVAS FUNCIONES DE UI INTERNA ---
+    private void AlCambiarIndiceContador(int valorViejo, int valorNuevo)
+    {
+        ActualizarImagenUI(valorNuevo);
+    }
+
+    private void ActualizarImagenUI(int indice)
+    {
+        if (imagenContadorUI == null) return;
+
+        if (indice <= 0 || indice >= spritesContador.Length || spritesContador[indice] == null)
+        {
+            imagenContadorUI.gameObject.SetActive(false);
+        }
+        else
+        {
+            imagenContadorUI.sprite = spritesContador[indice];
+            imagenContadorUI.gameObject.SetActive(true);
+        }
+    }
+
     private void AlCambiarPuntajeHost(int valorViejo, int valorNuevo)
     {
         ActualizarEscalaDeJugadorEnEscena(0, valorNuevo);
@@ -75,21 +109,18 @@ public class GameManager : NetworkBehaviour
 
     private void AlCambiarPuntajeCliente(int valorViejo, int valorNuevo)
     {
-        // Buscamos cualquier ID que no sea 0 (el cliente)
         ActualizarEscalaDeJugadorEnEscena(1, valorNuevo); 
     }
 
     private void ActualizarEscalaDeJugadorEnEscena(ulong targetClientId, int puntos)
     {
-        // Buscamos los jugadores en la escena local de este cliente/host
         PlayerMovement[] jugadores = FindObjectsByType<PlayerMovement>(FindObjectsSortMode.None);
         foreach (PlayerMovement player in jugadores)
         {
-            // Si el ID coincide (Host es 0, Cliente es mayor a 0)
             if ((targetClientId == 0 && player.OwnerClientId == 0) || (targetClientId == 1 && player.OwnerClientId > 0))
             {
                 player.ActualizarEscalaPorPuntaje(puntos);
-                break; // Ya encontramos al jugador que buscábamos
+                break; 
             }
         }
     }
@@ -106,10 +137,11 @@ public class GameManager : NetworkBehaviour
         if (!IsServer) return;
         Debug.Log($"[SERVIDOR] Se ha desconectado el cliente ID: {clientId}");
         
-        // Si el cliente se va en medio de la partida, pausamos el juego
         if (NetworkManager.Singleton.ConnectedClientsIds.Count < jugadoresNecesariosParaEmpezar)
         {
             partidaIniciada.Value = false;
+            cuentaRegresivaEnCurso = false;
+            indiceImagenContadorNet.Value = 0;
             Debug.Log("[SERVIDOR] Jugadores insuficientes. Partida pausada/detenida.");
         }
     }
@@ -119,23 +151,51 @@ public class GameManager : NetworkBehaviour
         int jugadoresActuales = NetworkManager.Singleton.ConnectedClientsIds.Count;
         Debug.Log($"[SERVIDOR] Jugadores conectados actualmente: {jugadoresActuales}/{jugadoresNecesariosParaEmpezar}");
 
-        if (jugadoresActuales >= jugadoresNecesariosParaEmpezar && !partidaIniciada.Value)
+        // MODIFICADO: Si hay quórum, en vez de arrancar directo, ejecutamos la cuenta atrás de imágenes
+        if (jugadoresActuales >= jugadoresNecesariosParaEmpezar && !partidaIniciada.Value && !cuentaRegresivaEnCurso)
         {
-            Debug.Log("[SERVIDOR] ¡Quórum alcanzado! La partida comienza AHORA.");
-            partidaIniciada.Value = true;
+            Debug.Log("[SERVIDOR] ¡Quórum alcanzado! Lanzando secuencia arcade de imágenes...");
+            StartCoroutine(RutinaCuentaRegresivaServidor());
         }
+    }
+
+    // NUEVO: Manejo secuencial de los sprites en red controlados por el Servidor
+    private System.Collections.IEnumerator RutinaCuentaRegresivaServidor()
+    {
+        cuentaRegresivaEnCurso = true;
+        partidaIniciada.Value = false; 
+
+        // Mostrar Sprite "3"
+        indiceImagenContadorNet.Value = 3;
+        yield return new WaitForSeconds(1f);
+
+        // Mostrar Sprite "2"
+        indiceImagenContadorNet.Value = 2;
+        yield return new WaitForSeconds(1f);
+
+        // Mostrar Sprite "1"
+        indiceImagenContadorNet.Value = 1;
+        yield return new WaitForSeconds(1f);
+
+        // Mostrar Sprite "GO" (Índice 4) y liberar el movimiento de los jugadores
+        indiceImagenContadorNet.Value = 4;
+        partidaIniciada.Value = true; 
+        
+        yield return new WaitForSeconds(1f);
+        
+        // Apagar la UI
+        indiceImagenContadorNet.Value = 0; 
+        cuentaRegresivaEnCurso = false;
     }
 
     private void AlCompletarCargaDeEscena(string sceneName, UnityEngine.SceneManagement.LoadSceneMode loadSceneMode, List<ulong> clientsCompleted, List<ulong> clientsTimedOut)
     {
         if (!IsServer) return;
-        // Se dispara al iniciar por primera vez y también al reiniciar la escena de juego
         StartCoroutine(TeletransportarJugadoresRetrasado(clientsCompleted));
     }
 
     private System.Collections.IEnumerator TeletransportarJugadoresRetrasado(List<ulong> clientes)
     {
-        // Esperamos a que todo se asiente en la escena recargada para evitar tirones
         yield return new WaitForEndOfFrame();
         yield return new WaitForEndOfFrame();
 
@@ -148,7 +208,6 @@ public class GameManager : NetworkBehaviour
                 NetworkObject playerObject = networkClient.PlayerObject;
                 if (playerObject != null)
                 {
-                    // Asignación de index de Spawn por ID de cliente
                     int spawnIndex = (clientId == 0) ? 0 : 1;
 
                     if (puntosDeSpawn == null || puntosDeSpawn.Count <= spawnIndex)
@@ -168,7 +227,6 @@ public class GameManager : NetworkBehaviour
                     }
                     else
                     {
-                        // Respaldo de seguridad solo si el objeto no tiene el script PlayerMovement
                         playerObject.transform.position = posicionSpawn;
                         playerObject.transform.rotation = rotacionSpawn;
                     }
@@ -176,11 +234,14 @@ public class GameManager : NetworkBehaviour
             }
         }
 
+        // MODIFICADO: Cuando se recarga la escena tras reiniciar, relanzamos la cuenta regresiva en lugar de encender el juego de golpe
         if (NetworkManager.Singleton.ConnectedClientsIds.Count >= jugadoresNecesariosParaEmpezar)
         {
-            partidaIniciada.Value = true;
             juegoTerminado.Value = false;
-            Debug.Log("[SERVIDOR] ¡Todos los jugadores en sus marcas! Partida iniciada de forma segura.");
+            if (!cuentaRegresivaEnCurso)
+            {
+                StartCoroutine(RutinaCuentaRegresivaServidor());
+            }
         }
     }
 
@@ -207,10 +268,12 @@ public class GameManager : NetworkBehaviour
 
         if (clientId == 0) 
         {
+            print("puntos sumados a host" + puntos);
             puntajeHost.Value += puntos;
         }
         else
         {
+            print("puntos sumados a cliente" + puntos);
             puntajeCliente.Value += puntos;
         }
     }
@@ -246,6 +309,8 @@ public class GameManager : NetworkBehaviour
         tiempoRestante.Value = tiempoInicialPartida;
         juegoTerminado.Value = false;
         partidaIniciada.Value = false; 
+        indiceImagenContadorNet.Value = 0;
+        cuentaRegresivaEnCurso = false;
 
         Debug.Log("[SERVIDOR] Red limpia. Recargando escena de juego...");
         NetworkManager.Singleton.SceneManager.LoadScene("MainScene", UnityEngine.SceneManagement.LoadSceneMode.Single);

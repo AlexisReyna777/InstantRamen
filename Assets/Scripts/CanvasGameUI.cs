@@ -1,17 +1,16 @@
 using UnityEngine;
-using UnityEngine.UI; // Cambiar por "using TMPro;" si usas TextMeshPro
+using UnityEngine.UI;
+using TMPro; // REQUERIDO: Para usar TextMeshPro y evitar la pixelación
 
 public class CanvasGameUI : MonoBehaviour
 {
     [Header("Componentes de la UI")]
-    [SerializeField] private Text textoTiempo; 
-    [SerializeField] private Text textoPuntajeHost;
-    [SerializeField] private Text textoPuntajeCliente;
-    
+    [SerializeField] private TextMeshProUGUI textoTiempo; // MODIFICADO: Ahora es TextMeshPro para máxima nitidez
+
     [Header("Pantalla Final (Popups)")]
     [SerializeField] private GameObject panelFinDePartida;
     
-    // --- NUEVAS VARIABLES PARA TUS IMÁGENES ---
+    [Header("Pantalla Final (Carteles)")]
     [SerializeField] private GameObject cartelVictoria;
     [SerializeField] private GameObject cartelDerrota;
     [SerializeField] private GameObject cartelEmpate;
@@ -32,10 +31,11 @@ public class CanvasGameUI : MonoBehaviour
     {
         if (GameManager.Instance == null) return;
 
-        // Actualización de textos de gameplay (Tiempo y Puntos)
-        if (textoTiempo != null) textoTiempo.text = "Tiempo: " + Mathf.CeilToInt(GameManager.Instance.tiempoRestante.Value).ToString();
-        if (textoPuntajeHost != null) textoPuntajeHost.text = "Puntos Host: " + GameManager.Instance.puntajeHost.Value;
-        if (textoPuntajeCliente != null) textoPuntajeCliente.text = "Puntos Cliente: " + GameManager.Instance.puntajeCliente.Value;
+        // CORRECCIÓN NITIDEZ: Actualización de texto con TextMeshPro de forma eficiente
+        if (textoTiempo != null) 
+        {
+            textoTiempo.text = "Tiempo: " + Mathf.CeilToInt(GameManager.Instance.tiempoRestante.Value).ToString();
+        }
 
         // --- CONTROL DEL POPUP FINAL DE PARTIDA ---
         if (panelFinDePartida != null)

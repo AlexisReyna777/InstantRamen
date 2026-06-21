@@ -218,6 +218,12 @@ MonoBehaviour:
   rotacionCajaApilada: {x: -90, y: -90, z: 90}
   penalizacionPorObjeto: 1.2
   velocidadMinima: 1
+  fuerzaDash: 25
+  duracionDash: 0.15
+  cooldownDash: 10
+  duracionStun: 1.2
+  fuerzaEmpujonRecibido: 8
+  multiplicadorEmpujonDesventaja: 0.35
   modeloHost: {fileID: 7211508193965600686}
   modeloCliente: {fileID: 1438464407931555265}
   audioSourceComponente: {fileID: 7154260637267796929}
@@ -225,7 +231,7 @@ MonoBehaviour:
   avatarHost: {fileID: 9000000, guid: 9be271d79857b5f41877c03fe66fa75b, type: 3}
   actorCliente: {fileID: 0}
   avatarCliente: {fileID: 9000000, guid: 7e551d421a574c341be814f9eb7fdc1a, type: 3}
-  multiplicadorVelocidadChiquito: 1.35
+  multiplicadorVelocidadChiquito: 2
 --- !u!54 &7747868955683912084
 Rigidbody:
   m_ObjectHideFlags: 0
