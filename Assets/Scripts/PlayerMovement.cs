@@ -53,7 +53,11 @@ public class PlayerMovement : NetworkBehaviour
     private float velocidadModificada;
     private List<GameObject> cajasCargadasVisuales = new List<GameObject>();
 
-    // PROPIEDAD PÚBLICA: Devuelve un valor de 0 a 1 que indica la disponibilidad del Dash
+    private Rigidbody miRigidbody;
+    
+    // NUEVO: Vector de control de dirección puente entre Update y FixedUpdate
+    private Vector3 direccionMovimiento = Vector3.zero;
+
     public float PorcentajeCooldownDash
     {
         get
@@ -72,20 +76,37 @@ public class PlayerMovement : NetworkBehaviour
     private void Awake()
     {
         miAnimator = GetComponent<Animator>();
+        miRigidbody = GetComponent<Rigidbody>(); 
         velocidadModificada = speed; 
     }
 
     public override void OnNetworkSpawn()
     {
         ActualizarVisualesYAvatar();
+        StartCoroutine(RutinaSeguridadSpawnFisico());
 
-        if (IsOwner)
+    }
+
+    private IEnumerator RutinaSeguridadSpawnFisico()
+    {
+        if (miRigidbody != null)
         {
-            Renderer rendererHijo = GetComponentInChildren<Renderer>();
-            if (rendererHijo != null)
-            {
-                rendererHijo.material.color = Color.red;
-            }
+            miRigidbody.detectCollisions = false;
+            miRigidbody.isKinematic = true;
+            miRigidbody.linearVelocity = Vector3.zero;
+            miRigidbody.angularVelocity = Vector3.zero;
+        }
+
+        yield return new WaitForEndOfFrame();
+        yield return new WaitForEndOfFrame();
+        yield return new WaitForEndOfFrame();
+
+        if (miRigidbody != null)
+        {
+            miRigidbody.linearVelocity = Vector3.zero;
+            miRigidbody.angularVelocity = Vector3.zero;
+            miRigidbody.isKinematic = false;
+            miRigidbody.detectCollisions = true;
         }
     }
 
@@ -112,7 +133,13 @@ public class PlayerMovement : NetworkBehaviour
         if (!IsOwner) return;
 
         if (GameManager.Instance != null && !GameManager.Instance.partidaIniciada.Value) return;
-        if (estaAturdido || estaDasheando) return;
+
+        // Si está bajo control físico externo, cancelamos la recolección de comandos
+        if (estaAturdido || estaDasheando) 
+        {
+            direccionMovimiento = Vector3.zero;
+            return;
+        }
 
         if (Input.GetKeyDown(KeyCode.Space) && Time.time >= tiempoSiguienteDash)
         {
@@ -143,8 +170,9 @@ public class PlayerMovement : NetworkBehaviour
             inputZ = temporalZ;
         }
 
-        Vector3 move = new Vector3(inputX, 0f, inputZ);
-        float velocidadActual = move.magnitude;
+        // NUEVO: Guardamos la dirección del movimiento calculada para procesarla físicamente
+        direccionMovimiento = new Vector3(inputX, 0f, inputZ);
+        float velocidadActual = direccionMovimiento.magnitude;
 
         if (miAnimator != null)
         {
@@ -153,15 +181,29 @@ public class PlayerMovement : NetworkBehaviour
         
         SincronizarAnimacionServerRpc(velocidadActual);
 
-        if (move.magnitude > 0.1f)
+        if (direccionMovimiento.magnitude > 0.1f)
         {
-            Quaternion rotacionObjetivo = Quaternion.LookRotation(move);
+            Quaternion rotacionObjetivo = Quaternion.LookRotation(direccionMovimiento);
             if (Quaternion.Angle(transform.rotation, rotacionObjetivo) > 0.1f)
             {
                 transform.rotation = rotacionObjetivo;
             }
-            
-            transform.position += move * velocidadModificada * Time.deltaTime;
+        }
+    }
+
+    // NUEVO: Bloque de actualización física fija nativa
+    void FixedUpdate()
+    {
+        if (!IsOwner) return;
+
+        // Si está bajo efectos de fuerzas externas como el dash o aturdimiento, dejamos que se procesen de forma pura
+        if (estaAturdido || estaDasheando) return;
+
+        if (miRigidbody != null)
+        {
+            // Calculamos el desplazamiento basándonos en la dirección y su velocidad asignada, respetando la caída/gravedad en Y
+            Vector3 velocidadObjetivo = direccionMovimiento * velocidadModificada;
+            miRigidbody.linearVelocity = new Vector3(velocidadObjetivo.x, miRigidbody.linearVelocity.y, velocidadObjetivo.z);
         }
     }
 
@@ -195,26 +237,18 @@ public class PlayerMovement : NetworkBehaviour
     {
         estaDasheando = true;
 
-        if (TryGetComponent<Rigidbody>(out Rigidbody rb))
+        if (miRigidbody != null)
         {
-            rb.linearVelocity = transform.forward * fuerzaDash;
-        }
-        else
-        {
-            float tiempoAsentamiento = 0f;
-            while (tiempoAsentamiento < duracionDash)
-            {
-                transform.position += transform.forward * fuerzaDash * Time.deltaTime;
-                tiempoAsentamiento += Time.deltaTime;
-                yield return null;
-            }
+            // NUEVO: Movimiento de Dash físico real manteniendo la Y de gravedad
+            Vector3 direccionDash = transform.forward * fuerzaDash;
+            miRigidbody.linearVelocity = new Vector3(direccionDash.x, miRigidbody.linearVelocity.y, direccionDash.z);
         }
 
         yield return new WaitForSeconds(duracionDash);
 
-        if (TryGetComponent<Rigidbody>(out Rigidbody rbFreno))
+        if (miRigidbody != null)
         {
-            rbFreno.linearVelocity = Vector3.zero;
+            miRigidbody.linearVelocity = new Vector3(0f, miRigidbody.linearVelocity.y, 0f);
         }
 
         estaDasheando = false;
@@ -270,21 +304,18 @@ public class PlayerMovement : NetworkBehaviour
 
         float fuerzaCalculada = fuerzaEmpujonRecibido * multiplicadorFuerza;
 
-        if (TryGetComponent<Rigidbody>(out Rigidbody rb))
+        if (miRigidbody != null)
         {
-            rb.linearVelocity = Vector3.zero; 
-            rb.AddForce(direccionEmpujon * fuerzaCalculada, ForceMode.Impulse);
-        }
-        else
-        {
-            transform.position += direccionEmpujon * (fuerzaCalculada * 0.15f);
+            // NUEVO: Reseteamos velocidad y aplicamos impulso físico real
+            miRigidbody.linearVelocity = Vector3.zero; 
+            miRigidbody.AddForce(direccionEmpujon * fuerzaCalculada, ForceMode.Impulse);
         }
 
         yield return new WaitForSeconds(duracionStun);
 
-        if (TryGetComponent<Rigidbody>(out Rigidbody rbFreno))
+        if (miRigidbody != null)
         {
-            rbFreno.linearVelocity = Vector3.zero;
+            miRigidbody.linearVelocity = new Vector3(0f, miRigidbody.linearVelocity.y, 0f);
         }
 
         estaAturdido = false;
@@ -361,6 +392,12 @@ public class PlayerMovement : NetworkBehaviour
             LimpiarPesoClientRpc();
             NetworkTransform netTransform = GetComponent<NetworkTransform>();
             
+            if (miRigidbody != null)
+            {
+                miRigidbody.linearVelocity = Vector3.zero;
+                miRigidbody.angularVelocity = Vector3.zero;
+            }
+
             if (netTransform != null && netTransform.CanCommitToTransform)
             {
                 netTransform.Teleport(nuevaPosicion, nuevaRotacion, transform.localScale);
@@ -381,6 +418,13 @@ public class PlayerMovement : NetworkBehaviour
         if (IsServer) return;
 
         NetworkTransform netTransform = GetComponent<NetworkTransform>();
+        
+        if (miRigidbody != null)
+        {
+            miRigidbody.linearVelocity = Vector3.zero;
+            miRigidbody.angularVelocity = Vector3.zero;
+        }
+
         if (netTransform != null)
         {
             netTransform.enabled = false;

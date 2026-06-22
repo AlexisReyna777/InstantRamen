@@ -20,20 +20,24 @@ public class RelayManager : MonoBehaviour
 
     [Header("Componentes de UI de Texto")]
     [SerializeField] private TMP_InputField joinInput; 
-    [SerializeField] private TextMeshProUGUI codeText; // Se ocultará al inicio
-    [SerializeField] private TextMeshProUGUI estadoConexionText; // Se ocultará al inicio
+    [SerializeField] private TextMeshProUGUI codeText; 
+    [SerializeField] private TextMeshProUGUI estadoConexionText; 
 
     [Header("Configuración de Escena")]
     [SerializeField] private string nombreEscenaJuego = "MainScene"; 
 
+    [Header("Limpieza Anti-Bugs (Menú 3D)")]
+    [Tooltip("Arrastra aquí la cámara que usa tu menú principal")]
+    [SerializeField] private Camera camaraMenu;
+    [Tooltip("Arrastra aquí el objeto vacío que tiene el script LluviaMenuManager")]
+    [SerializeField] private GameObject gestorLluvia3D;
+
     async void Start()
     {
-        // --- SOLUCIÓN VISUAL: Ocultamos los textos y botones al arrancar el juego ---
         if (iniciarPartidaButton != null) iniciarPartidaButton.gameObject.SetActive(false);
         if (codeText != null) codeText.gameObject.SetActive(false);
         if (estadoConexionText != null) estadoConexionText.gameObject.SetActive(false);
 
-        // Inicialización de servicios de Unity
         if (UnityServices.State == ServicesInitializationState.Uninitialized)
         {
             await UnityServices.InitializeAsync();
@@ -44,7 +48,6 @@ public class RelayManager : MonoBehaviour
             await AuthenticationService.Instance.SignInAnonymouslyAsync();
         }
 
-        // Configuración de listeners de botones
         if (hostButton != null)
         {
             hostButton.onClick.RemoveAllListeners(); 
@@ -92,8 +95,40 @@ public class RelayManager : MonoBehaviour
         if (NetworkManager.Singleton.IsServer)
         {
             if (estadoConexionText != null) estadoConexionText.text = "Cargando mundo...";
+
+            // Ordenamos a todos los clientes limpiar el menú inmediatamente para que no haya desincronización física
+            LimpiarElementosMenuClientRpc();
+
             NetworkManager.Singleton.SceneManager.LoadScene(nombreEscenaJuego, LoadSceneMode.Single);
         }
+    }
+
+    [ClientRpc]
+    private void LimpiarElementosMenuClientRpc()
+    {
+        // 1. Apagamos el gestor de la lluvia para frenar los bucles de instanciación
+        if (gestorLluvia3D != null)
+        {
+            gestorLluvia3D.SetActive(false);
+        }
+
+        // 2. Desactivamos la cámara del menú para que no compita con la cámara de juego real
+        if (camaraMenu != null)
+        {
+            camaraMenu.enabled = false;
+            camaraMenu.gameObject.SetActive(false);
+        }
+
+        // MODIFICACIÓN DE SEGURIDAD: Fulminamos el EventSystem desalineado del menú antes del cambio de escena
+        UnityEngine.EventSystems.EventSystem sistemaEventos = FindObjectOfType<UnityEngine.EventSystems.EventSystem>();
+        if (sistemaEventos != null)
+        {
+            sistemaEventos.enabled = false;
+            sistemaEventos.gameObject.SetActive(false);
+        }
+
+        // 3. Ocultamos el canvas completo por si acaso tarda un frame en destruirse
+        gameObject.SetActive(false);
     }
 
     private void OnClientConnected(ulong clientId)
@@ -104,8 +139,7 @@ public class RelayManager : MonoBehaviour
             
             if (estadoConexionText != null)
             {
-                estadoConexionText.gameObject.SetActive(true); // Aseguramos que sea visible
-                estadoConexionText.text = "¡Cliente conectado! Listo para empezar.";
+                estadoEventosTextVisibilidad(true, "¡Cliente conectado! Listo para empezar.");
             }
             
             if (NetworkManager.Singleton.IsServer && iniciarPartidaButton != null)
@@ -114,29 +148,32 @@ public class RelayManager : MonoBehaviour
             }
         }
     }
+
+    private void estadoEventosTextVisibilidad(bool activar, string mensaje)
+    {
+        if (estadoConexionText != null)
+        {
+            estadoConexionText.gameObject.SetActive(activar);
+            estadoConexionText.text = mensaje;
+        }
+    }
    
     async void CreateRelay()
     {
         try
         {
-            // Hacemos visible el texto de estado para mostrar el progreso
-            if (estadoConexionText != null)
-            {
-                estadoConexionText.gameObject.SetActive(true);
-                estadoConexionText.text = "Creando sala...";
-            }
+            estadoEventosTextVisibilidad(true, "Creando sala...");
             
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(3);
             string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
             
-            // Mostramos el código generado
             if (codeText != null) 
             {
                 codeText.gameObject.SetActive(true);
                 codeText.text = "Code: " + joinCode;
             }
 
-            if (estadoConexionText != null) estadoConexionText.text = "Esperando al cliente...";
+            estadoEventosTextVisibilidad(true, "Esperando al cliente...");
 
             var relayServerData = AllocationUtils.ToRelayServerData(allocation, "dtls");
             NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(relayServerData);
@@ -149,7 +186,7 @@ public class RelayManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            if (estadoConexionText != null) estadoConexionText.text = "Error al crear sala.";
+            estadoEventosTextVisibilidad(true, "Error al crear sala.");
             Debug.LogError($"Error al crear el Relay: {e.Message}");
         }
     }
@@ -160,12 +197,7 @@ public class RelayManager : MonoBehaviour
 
         try
         {
-            // Hacemos visible el texto de estado en el cliente
-            if (estadoConexionText != null)
-            {
-                estadoConexionText.gameObject.SetActive(true);
-                estadoConexionText.text = "Conectando...";
-            }
+            estadoEventosTextVisibilidad(true, "Conectando...");
 
             var joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
             
@@ -174,14 +206,14 @@ public class RelayManager : MonoBehaviour
 
             NetworkManager.Singleton.StartClient();
             
-            if (estadoConexionText != null) estadoConexionText.text = "¡Conectado! Esperando al Host...";
+            estadoEventosTextVisibilidad(true, "¡Conectado! Esperando al Host...");
             
             if (hostButton != null) hostButton.interactable = false;
             if (joinButton != null) joinButton.interactable = false;
         }
         catch (Exception e)
         {
-            if (estadoConexionText != null) estadoConexionText.text = "Error: Código inválido.";
+            estadoEventosTextVisibilidad(true, "Error: Código inválido.");
             Debug.LogError($"Error al unirse al Relay: {e.Message}");
         }
     }
