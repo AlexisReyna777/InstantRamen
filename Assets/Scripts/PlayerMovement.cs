@@ -55,7 +55,6 @@ public class PlayerMovement : NetworkBehaviour
 
     private Rigidbody miRigidbody;
     
-    // NUEVO: Vector de control de dirección puente entre Update y FixedUpdate
     private Vector3 direccionMovimiento = Vector3.zero;
 
     public float PorcentajeCooldownDash
@@ -84,17 +83,19 @@ public class PlayerMovement : NetworkBehaviour
     {
         ActualizarVisualesYAvatar();
         StartCoroutine(RutinaSeguridadSpawnFisico());
-
     }
 
     private IEnumerator RutinaSeguridadSpawnFisico()
     {
         if (miRigidbody != null)
         {
-            miRigidbody.detectCollisions = false;
-            miRigidbody.isKinematic = true;
+            // Forzamos temporalmente a dinámico para poder vaciar inercias sin errores de consola
+            miRigidbody.isKinematic = false;
             miRigidbody.linearVelocity = Vector3.zero;
             miRigidbody.angularVelocity = Vector3.zero;
+
+            miRigidbody.detectCollisions = false;
+            miRigidbody.isKinematic = true;
         }
 
         yield return new WaitForEndOfFrame();
@@ -103,10 +104,10 @@ public class PlayerMovement : NetworkBehaviour
 
         if (miRigidbody != null)
         {
-            miRigidbody.linearVelocity = Vector3.zero;
-            miRigidbody.angularVelocity = Vector3.zero;
             miRigidbody.isKinematic = false;
             miRigidbody.detectCollisions = true;
+            miRigidbody.linearVelocity = Vector3.zero;
+            miRigidbody.angularVelocity = Vector3.zero;
         }
     }
 
@@ -134,7 +135,6 @@ public class PlayerMovement : NetworkBehaviour
 
         if (GameManager.Instance != null && !GameManager.Instance.partidaIniciada.Value) return;
 
-        // Si está bajo control físico externo, cancelamos la recolección de comandos
         if (estaAturdido || estaDasheando) 
         {
             direccionMovimiento = Vector3.zero;
@@ -170,7 +170,6 @@ public class PlayerMovement : NetworkBehaviour
             inputZ = temporalZ;
         }
 
-        // NUEVO: Guardamos la dirección del movimiento calculada para procesarla físicamente
         direccionMovimiento = new Vector3(inputX, 0f, inputZ);
         float velocidadActual = direccionMovimiento.magnitude;
 
@@ -191,19 +190,23 @@ public class PlayerMovement : NetworkBehaviour
         }
     }
 
-    // NUEVO: Bloque de actualización física fija nativa
     void FixedUpdate()
     {
         if (!IsOwner) return;
-
-        // Si está bajo efectos de fuerzas externas como el dash o aturdimiento, dejamos que se procesen de forma pura
         if (estaAturdido || estaDasheando) return;
 
         if (miRigidbody != null)
         {
-            // Calculamos el desplazamiento basándonos en la dirección y su velocidad asignada, respetando la caída/gravedad en Y
             Vector3 velocidadObjetivo = direccionMovimiento * velocidadModificada;
-            miRigidbody.linearVelocity = new Vector3(velocidadObjetivo.x, miRigidbody.linearVelocity.y, velocidadObjetivo.z);
+            
+            // NUEVO: Filtro de gravedad de seguridad contra desincronizaciones por lag (Lag Spikes)
+            float velocidadY = miRigidbody.linearVelocity.y;
+            if (velocidadY > 0.1f) 
+            {
+                velocidadY /= 2f; 
+            }
+
+            miRigidbody.linearVelocity = new Vector3(velocidadObjetivo.x, velocidadY, velocidadObjetivo.z);
         }
     }
 
@@ -239,7 +242,6 @@ public class PlayerMovement : NetworkBehaviour
 
         if (miRigidbody != null)
         {
-            // NUEVO: Movimiento de Dash físico real manteniendo la Y de gravedad
             Vector3 direccionDash = transform.forward * fuerzaDash;
             miRigidbody.linearVelocity = new Vector3(direccionDash.x, miRigidbody.linearVelocity.y, direccionDash.z);
         }
@@ -306,7 +308,6 @@ public class PlayerMovement : NetworkBehaviour
 
         if (miRigidbody != null)
         {
-            // NUEVO: Reseteamos velocidad y aplicamos impulso físico real
             miRigidbody.linearVelocity = Vector3.zero; 
             miRigidbody.AddForce(direccionEmpujon * fuerzaCalculada, ForceMode.Impulse);
         }
@@ -396,6 +397,9 @@ public class PlayerMovement : NetworkBehaviour
             {
                 miRigidbody.linearVelocity = Vector3.zero;
                 miRigidbody.angularVelocity = Vector3.zero;
+                miRigidbody.isKinematic = true; 
+                miRigidbody.position = nuevaPosicion;
+                miRigidbody.rotation = nuevaRotacion;
             }
 
             if (netTransform != null && netTransform.CanCommitToTransform)
@@ -406,6 +410,11 @@ public class PlayerMovement : NetworkBehaviour
             {
                 transform.position = nuevaPosicion;
                 transform.rotation = nuevaRotacion;
+            }
+
+            if (miRigidbody != null)
+            {
+                miRigidbody.isKinematic = false;
             }
 
             CambiarPosicionClientRpc(nuevaPosicion, nuevaRotacion);
@@ -423,6 +432,9 @@ public class PlayerMovement : NetworkBehaviour
         {
             miRigidbody.linearVelocity = Vector3.zero;
             miRigidbody.angularVelocity = Vector3.zero;
+            miRigidbody.isKinematic = true; 
+            miRigidbody.position = pos;
+            miRigidbody.rotation = rot;
         }
 
         if (netTransform != null)
@@ -436,6 +448,11 @@ public class PlayerMovement : NetworkBehaviour
         {
             transform.position = pos;
             transform.rotation = rot;
+        }
+
+        if (miRigidbody != null)
+        {
+            miRigidbody.isKinematic = false;
         }
     }
 
